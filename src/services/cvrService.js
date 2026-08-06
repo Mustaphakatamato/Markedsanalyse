@@ -1,67 +1,94 @@
-// CVR (Det Centrale Virksomhedsregister) opslag via cvrapi.dk — gratis,
-// ingen login, men:
-// - 50 opslag/dag pr. IP (giver "QUOTA_EXCEEDED" når loftet er nået)
-// - kræver en custom User-Agent-header, som browsere ikke selv kan sætte,
-//   derfor går kaldet gennem Edge Function'en "cvr" (supabase/functions/cvr),
-//   som sætter headeren server-side og desuden cacher svaret i syv dage —
-//   det er dét der gør 50-opslags-loftet til et ikke-problem ved gentagne
-//   opslag på samme virksomhed.
+// CVR-opslag mod Erhvervsstyrelsens data via Datafordeleren. Erstatter
+// cvrapi.dk, som havde et loft på 50 opslag/dag pr. IP — et loft der blev
+// delt af alle appens brugere, når kaldene gik gennem vores server.
 //
-// Denne API leverer stamdata (navn, adresse, branche, status, ansatte) — den
-// indeholder IKKE regnskabstal. Økonomi/nøgletal håndteres derfor separat i
-// financialsService.js (mock).
+// Opslaget er delt i to, fordi kilden er delt i to:
+//
+//   søgVirksomheder()  — fritekstsøgning på navn. Går mod vores EGET indeks i
+//                        Postgres, indlæst ugentligt fra Datafordelerens
+//                        fildownload (scripts/indlaes-cvr-navne.mjs).
+//                        Nødvendigt fordi Datafordelerens GraphQL kun kan
+//                        filtrere strenge med "eq" og "in" — der findes ingen
+//                        "contains", så "netcompany" ville give nul træf.
+//
+//   hentVirksomhed()   — stamdata for ét CVR-nummer, direkte fra
+//                        Datafordelerens GraphQL. Ubegrænset.
+//
+// Indekset dækker kun AKTIVE virksomheder, da det er hvad Datafordelerens
+// "current"-udtræk indeholder. Ophørte selskaber kan ikke findes på navn, men
+// hentes fint på CVR-nummer.
 
 import { getFromFunction } from "../lib/apiClient";
 
-function normalizeCompany(raw) {
-  return {
-    cvr: raw.vat != null ? String(raw.vat) : null,
-    name: raw.name || null,
-    address: raw.address || null,
-    zipcode: raw.zipcode || null,
-    city: raw.city || null,
-    fullAddress: [raw.address, [raw.zipcode, raw.city].filter(Boolean).join(" ")]
-      .filter(Boolean)
-      .join(", "),
-    companyType: raw.companydesc || raw.companycode || null,
-    industryCode: raw.industrycode || null,
-    industryDesc: raw.industrydesc || null,
-    startDate: raw.startdate || null,
-    endDate: raw.enddate || null,
-    employeesRange: raw.employees || null,
-    phone: raw.phone || null,
-    email: raw.email || null,
-    active: !raw.enddate
-  };
+const CVR_NUMMER = /^\d{8}$/;
+
+/**
+ * Søg efter virksomheder på navn — eller genkend et CVR-nummer.
+ *
+ * @param {string} query Firmanavn eller 8-cifret CVR-nummer
+ * @returns {Promise<
+ *   | { status: "cvr", cvr: string }
+ *   | { status: "ok", traf: Array<{ cvr: string, navn: string }> }
+ *   | { status: "not_found" | "error", message: string }
+ * >}
+ */
+export async function søgVirksomheder(query) {
+  const term = (query ?? "").trim();
+  if (!term) return { status: "not_found", message: "Angiv et firmanavn eller CVR-nummer." };
+
+  if (CVR_NUMMER.test(term)) return { status: "cvr", cvr: term };
+
+  if (term.length < 2) {
+    return { status: "not_found", message: "Søgeteksten skal være mindst to tegn." };
+  }
+
+  try {
+    const response = await getFromFunction(`/cvr-soeg?q=${encodeURIComponent(term)}&maks=10`);
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data) {
+      return { status: "error", message: data?.error || "Søgningen fejlede." };
+    }
+
+    if (!data.traf?.length) {
+      return {
+        status: "not_found",
+        message:
+          "Ingen aktiv virksomhed fundet med det navn. Er selskabet ophørt, kan du " +
+          "søge på CVR-nummeret i stedet."
+      };
+    }
+
+    return { status: "ok", traf: data.traf };
+  } catch (err) {
+    return { status: "error", message: err.message || "Søgningen fejlede." };
+  }
 }
 
 /**
- * Look up a Danish company by name or CVR number via cvrapi.dk.
+ * Hent stamdata for én virksomhed på CVR-nummer.
  *
- * @param {string} query Company name or 8-digit CVR number
- * @returns {Promise<{ status: "ok", company: object } | { status: "not_found" | "quota_exceeded", message: string }>}
+ * @param {string} cvr 8-cifret CVR-nummer
+ * @returns {Promise<{ status: "ok", company: object } | { status: "not_found" | "error", message?: string }>}
  */
-export async function lookupCompany(query) {
-  const term = query.trim();
-  if (!term) return { status: "not_found", message: "Angiv et firmanavn eller CVR-nummer." };
-
-  const response = await getFromFunction(`/cvr?search=${encodeURIComponent(term)}`);
-  const data = await response.json().catch(() => null);
-
-  if (!data) {
-    return { status: "not_found", message: "Kunne ikke læse svar fra CVR-opslaget." };
+export async function hentVirksomhed(cvr) {
+  if (!CVR_NUMMER.test(cvr ?? "")) {
+    return { status: "not_found", message: "Ugyldigt CVR-nummer." };
   }
 
-  if (data.error === "QUOTA_EXCEEDED") {
-    return {
-      status: "quota_exceeded",
-      message: "Dagligt opslagsloft på CVR-opslag er nået (50/dag). Prøv igen i morgen."
-    };
-  }
+  try {
+    const response = await getFromFunction(`/cvr-datafordeler?cvr=${cvr}`);
+    const data = await response.json().catch(() => null);
 
-  if (data.error) {
-    return { status: "not_found", message: "Virksomheden blev ikke fundet." };
-  }
+    if (!data) return { status: "error", message: "Kunne ikke læse svar fra CVR-opslaget." };
 
-  return { status: "ok", company: normalizeCompany(data) };
+    if (data.status === "ok") return { status: "ok", company: data.company };
+    if (data.status === "not_found") {
+      return { status: "not_found", message: "Ingen virksomhed fundet med det CVR-nummer." };
+    }
+
+    return { status: "error", message: data.message || "Opslaget fejlede." };
+  } catch (err) {
+    return { status: "error", message: err.message || "Opslaget fejlede." };
+  }
 }

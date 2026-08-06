@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { lookupCompany } from "../services/cvrService";
+import { hentVirksomhed, søgVirksomheder } from "../services/cvrService";
 import { searchWonContractsByCompany } from "../services/tedService";
 import { getAvailableFiscalYears, getFinancialsForYear } from "../services/financialsService";
 import { getESGProfile } from "../services/esgService";
@@ -38,17 +38,23 @@ function formatDate(isoDate) {
   return isoDate ? isoDate.slice(0, 10) : "–";
 }
 
-const STATUS_MESSAGES = {
-  not_found: "Ingen virksomhed fundet med det navn eller CVR-nummer.",
-  quota_exceeded: null, // uses service-provided message
-  error: "Der skete en fejl under opslaget."
-};
+// Datafordeleren leverer datoer i ISO-format ("1991-01-09"). Vist råt stak de
+// ud fra resten af siden, der er gennemført dansk.
+function formatDanishDate(isoDate) {
+  if (!isoDate) return null;
+  const d = new Date(isoDate);
+  return Number.isNaN(d.getTime()) ? isoDate : d.toLocaleDateString("da-DK");
+}
 
 export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
   const [query, setQuery] = useState(prefillQuery || "");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState(null);
   const [company, setCompany] = useState(null);
+  // Et firmanavn kan ramme flere selskaber — "netcompany" giver både
+  // Netcompany A/S, Netcompany Group A/S og Netcompany Banking Services A/S.
+  // Så lader vi brugeren vælge frem for at gætte.
+  const [candidates, setCandidates] = useState([]);
   const [esg, setEsg] = useState(null);
   const [contracts, setContracts] = useState({ notices: [], total: 0, usedFallback: false });
   const [contractsLoading, setContractsLoading] = useState(false);
@@ -109,6 +115,8 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
     }
   };
 
+  // Søgning og opslag er to trin, fordi kilden er delt i to: navnesøgning går
+  // mod vores eget indeks, stamdata hentes på CVR-nummer hos Datafordeleren.
   const runSearch = async (term) => {
     const trimmed = (term ?? "").trim();
     if (!trimmed) return;
@@ -116,12 +124,35 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
     setStatus("loading");
     setMessage(null);
     setCompany(null);
+    setCandidates([]);
 
-    const result = await lookupCompany(trimmed);
+    const result = await søgVirksomheder(trimmed);
+
+    if (result.status === "cvr") return loadCompany(result.cvr);
 
     if (result.status !== "ok") {
       setStatus(result.status);
-      setMessage(result.message || STATUS_MESSAGES[result.status]);
+      setMessage(result.message);
+      return;
+    }
+
+    // Ét entydigt træf behøver ingen mellemstation.
+    if (result.traf.length === 1) return loadCompany(result.traf[0].cvr);
+
+    setCandidates(result.traf);
+    setStatus("candidates");
+  };
+
+  const loadCompany = async (cvr) => {
+    setStatus("loading");
+    setMessage(null);
+    setCandidates([]);
+
+    const result = await hentVirksomhed(cvr);
+
+    if (result.status !== "ok") {
+      setStatus(result.status === "not_found" ? "not_found" : "error");
+      setMessage(result.message);
       return;
     }
 
@@ -207,7 +238,7 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
             <label>Firmanavn eller CVR-nummer</label>
             <input
               className="input"
-              placeholder="Fx Netcompany A/S eller 28429738"
+              placeholder="Fx Netcompany eller 25511484"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
@@ -225,10 +256,37 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
         </div>
       </section>
 
-      {(status === "not_found" || status === "quota_exceeded" || status === "error") && (
+      {(status === "not_found" || status === "error") && (
         <section className="empty-state">
           <h4>Ingen resultat</h4>
           <p className="muted">{message}</p>
+        </section>
+      )}
+
+      {status === "candidates" && (
+        <section className="card">
+          <div className="section-header">
+            <div>
+              <h3>{candidates.length} virksomheder matcher</h3>
+              <p className="muted">Vælg den du vil se profilen for.</p>
+            </div>
+          </div>
+
+          <div className="stack">
+            {candidates.map((kandidat) => (
+              <div className="subcard" key={kandidat.cvr}>
+                <div className="space-between mobile-stack">
+                  <div>
+                    <strong>{kandidat.navn}</strong>
+                    <p className="muted small">CVR {kandidat.cvr}</p>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" onClick={() => loadCompany(kandidat.cvr)}>
+                    Se profil →
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -251,7 +309,12 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
               {company.companyType && <span className="tag">{company.companyType}</span>}
               {company.industryDesc && <span className="tag">{company.industryDesc}</span>}
               {company.employeesRange && <span className="tag">{company.employeesRange} ansatte</span>}
-              {company.startDate && <span className="tag">Stiftet {company.startDate}</span>}
+              {company.startDate && (
+                <span className="tag">Stiftet {formatDanishDate(company.startDate)}</span>
+              )}
+              {company.endDate && (
+                <span className="tag">Ophørt {formatDanishDate(company.endDate)}</span>
+              )}
             </div>
           </section>
 

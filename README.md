@@ -52,7 +52,7 @@ virksomhedsopslaget for den pågældende virksomhed ([`App.jsx`](src/App.jsx)).
 
 | Kilde | Leverer | Implementering |
 |---|---|---|
-| **CVR** via cvrapi.dk | Stamdata på virksomhed | [`cvrService.js`](src/services/cvrService.js) |
+| **CVR** via Datafordeleren | Stamdata på virksomhed | [`cvrService.js`](src/services/cvrService.js) |
 | **Erhvervsstyrelsen** (virk.dk, XBRL) | Regnskabstal pr. regnskabsår | [`regnskabService.js`](src/services/regnskabService.js) |
 | **TED** (Tenders Electronic Daily, v3) | EU-udbud og kontrakttildelinger | [`tedService.js`](src/services/tedService.js) |
 | **Danmarks Statistik** (tabel REGN50A) | Branchegennemsnit for nøgletal | [`industryBenchmarkService.js`](src/services/industryBenchmarkService.js) |
@@ -60,10 +60,15 @@ virksomhedsopslaget for den pågældende virksomhed ([`App.jsx`](src/App.jsx)).
 Hver kilde har sine egne begrænsninger — de er dokumenteret i toppen af den
 enkelte servicefil. De vigtigste:
 
-- **cvrapi.dk: 50 opslag/dag pr. IP.** Cachen gør det til et lille problem —
-  kun det første opslag på en given virksomhed koster af kvoten, resten
-  serveres fra Postgres i syv dage. Kilden kræver desuden en custom
-  `User-Agent`, som browsere ikke selv må sætte; den sættes i Edge Function'en.
+- **Datafordelerens GraphQL kan ikke fritekstsøge.** Strengfiltre understøtter
+  kun `eq` og `in` — der findes ingen `contains`. Navnesøgning sker derfor mod
+  et eget indeks i Postgres, se nedenfor. Tjenesten har desuden to
+  begrænsninger der ikke står i dokumentationen: kun ét rodfelt pr.
+  forespørgsel, og aliaser er forbudt. Versionen er `v2`, ikke `v3` som
+  eksemplerne viser.
+- **Navnesøgning finder kun aktive virksomheder.** Datafordelerens
+  `current`-udtræk indeholder ikke ophørte selskaber. De kan stadig slås op på
+  CVR-nummer.
 - **Regnskabsdata er kun tilgængelige over `http://`** og svarer nogle gange
   ekstremt langsomt. Store/børsnoterede selskaber, der indberetter i
   ESEF/IFRS-format, kan ikke parses — de vises som "nøgletal kunne ikke
@@ -95,9 +100,12 @@ src/
   context/     ProjectsContext — udbud i localStorage
   components/  layout/TopNav, charts/TrendChart (håndtegnet SVG, ingen chart-lib)
   pages/       CompanyLookupPage, TenderPage
+scripts/
+  indlaes-cvr-navne.mjs   Ugentlig indlæsning af navneindekset
 supabase/
-  functions/   ted, cvr, regnskab-search, regnskab-doc + _shared/
-  migrations/  Cache-tabeller
+  functions/   cvr-soeg, cvr-datafordeler, ted,
+               regnskab-search, regnskab-doc + _shared/
+  migrations/  Cache-tabeller og navneindeks
 ```
 
 Appen har ingen router og ingen UI-afhængigheder — kun React og Vite. Navigation
@@ -119,6 +127,30 @@ Tre tabeller cacher svarene: CVR-opslag i syv dage, regnskabssøgninger i et
 døgn, regnskabsdokumenter i 30 dage (et offentliggjort regnskab ændrer sig
 ikke). Tabellerne har RLS slået til uden policies og er utilgængelige for
 klienten — kun funktionerne, som bruger service-nøglen, kan røre dem.
+
+### Navneindekset
+
+Appens vigtigste indgang er at skrive et firmanavn, men Datafordeleren kan
+kun matche navne præcist. Derfor holder vi et eget indeks over samtlige
+**870.000 aktive danske virksomheder** i `cvr_virksomhed_indeks` — kun
+CVR-nummer og navn, nok til at oversætte et navn til et nummer. Resten hentes
+på nummeret, hvor der ingen begrænsning er.
+
+Søgningen bruger et trigram-indeks, så delvise navne og stavefejl rammer:
+`netcompny` finder stadig Netcompany A/S. Rangeringen ligger i SQL-funktionen
+`soeg_virksomhed()`, så databasen kan bruge indekset til både at filtrere og
+sortere. Indekset fylder 174 MB.
+
+Data indlæses med [`scripts/indlaes-cvr-navne.mjs`](scripts/indlaes-cvr-navne.mjs):
+
+```bash
+node scripts/indlaes-cvr-navne.mjs
+```
+
+Scriptet kræver `DATAFORDELER_API_KEY` og `SUPABASE_SERVICE_ROLE_KEY` i `.env`.
+Det kan ikke køre som Edge Function — filerne fylder 567 MB udpakket, mod 256 MB
+tilgængelig hukommelse. Datafordeleren gendanner filerne natten til lørdag og
+gemmer dem syv dage, så en ugentlig kørsel er passende.
 
 XBRL-parsingen bliver i browseren med vilje: Edge Functions har kun 2s CPU-tid
 pr. request, hvilket ikke rækker til et større regnskabsdokument. Proxying er
@@ -146,6 +178,5 @@ async I/O og tæller ikke med.
 2. **Nationale udbudsdata** (Udbud.dk) — dækker de kontrakter TED ikke gør.
 3. **Auth og udbud i Postgres**, så en markedsundersøgelse kan deles i en
    organisation.
-4. **CVR-API'et på data.virk.dk** i stedet for cvrapi.dk — fjerner
-   kvotespørgsmålet helt og giver ledelse, ejerforhold og tegningsregel.
-   Gratis, men kræver en systemadgangsaftale med Erhvervsstyrelsen.
+4. **Automatisér indlæsningen** af navneindekset, så det ikke skal køres i
+   hånden hver uge.
