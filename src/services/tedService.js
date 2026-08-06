@@ -9,12 +9,12 @@
 // - Comparison operator is a single "=", not "==".
 // - Quoted phrases ("Company Name A/S") do an exact-ish phrase match;
 //   unquoted single words do a looser/tokenized match.
-// - In dev/preview this goes through the Vite proxy at /api/ted (see
-//   vite.config.js) because TED's API does not send CORS headers.
+// - Kaldet går gennem Edge Function'en "ted" (supabase/functions/ted), fordi
+//   TED's API ikke sender CORS-headers. Samme vej i udvikling og produktion.
 // - No "sort" request field exists, but the query language itself supports
 //   a trailing "SORT BY <field> DESC/ASC" clause.
 
-const TED_SEARCH_URL = "/api/ted/v3/notices/search";
+import { postToFunction } from "../lib/apiClient";
 
 const RESULT_FIELDS = [
   "notice-identifier",
@@ -40,6 +40,37 @@ function firstText(field) {
   return Array.isArray(values) ? values.join(", ") : String(values ?? "");
 }
 
+// Til verifikation skal vi se på ALLE sprogvarianter, ikke kun den første —
+// nøglerækkefølgen i objektet er vilkårlig, så et rigtigt match kan sagtens
+// ligge under "fra" eller "eng" mens firstText() rammer noget andet.
+function allTexts(field) {
+  if (!field) return "";
+  return Object.values(field)
+    .map((values) => (Array.isArray(values) ? values.join(" ") : String(values ?? "")))
+    .join(" ");
+}
+
+// Fjerner det der typisk står i CVR, men ikke i TED's vindernavn: selskabsform
+// til sidst, og "v/<indehaver>" på enkeltmandsvirksomheder (dér er personen
+// efter skråstregen ejeren, ikke en del af virksomhedsnavnet).
+const OWNER_MARKER = /\s+v\/.*$/i;
+const LEGAL_FORM_SUFFIX = /[\s,]+(a\/s|aps|ivs|i\/s|k\/s|p\/s|a\.m\.b\.a\.|amba|smba|fmba)\.?$/i;
+
+function coreCompanyName(name) {
+  return name.replace(OWNER_MARKER, "").replace(LEGAL_FORM_SUFFIX, "").trim();
+}
+
+// Sammenligning skal være ufølsom over for store/små bogstaver, diakritiske
+// tegn (Ø/ø, é) og tegnsætning — "A/S Øresund" og "as oresund" er samme navn.
+function normalizeForMatch(text) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function noticeUrl(notice) {
   const publicationNumber = notice?.["publication-number"];
   return (
@@ -52,11 +83,7 @@ function noticeUrl(notice) {
 }
 
 async function postSearch(query, { page = 1, limit = 25 } = {}) {
-  const response = await fetch(TED_SEARCH_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, fields: RESULT_FIELDS, page, limit })
-  });
+  const response = await postToFunction("/ted", { query, fields: RESULT_FIELDS, page, limit });
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -86,8 +113,11 @@ function normalizeNotice(notice) {
 
 /**
  * Search TED for notices won by a given company name.
- * Tries an exact phrase match first; if that comes back empty, retries with
- * a looser (unquoted) match on the same term as a fallback.
+ *
+ * Søger først på det fulde navn som eksakt frase. Giver det ingenting, prøves
+ * kernenavnet (uden selskabsform og "v/<indehaver>") — stadig som frase, aldrig
+ * som løse ord. Fallback-resultater verificeres desuden mod vindernavnet, så
+ * kun kontrakter der rent faktisk indeholder navnet kommer med.
  *
  * @param {string} companyName
  * @param {{ page?: number, limit?: number }} [options]
@@ -99,23 +129,42 @@ export async function searchWonContractsByCompany(companyName, options = {}) {
 
   const { page = 1, limit = 25 } = options;
 
-  const exactQuery = `winner-name="${escapeQueryPhrase(name)}"`;
-  let data = await postSearch(exactQuery, { page, limit });
-  let usedFallback = false;
+  const data = await postSearch(`winner-name="${escapeQueryPhrase(name)}"`, { page, limit });
 
-  if (!data.notices?.length && name.split(/\s+/).length > 1) {
-    // Fall back to the first word unquoted — TED's phrase match is strict
-    // about legal suffixes (A/S, ApS, etc.), so a full exact phrase often
-    // misses even real matches.
-    const looseTerm = name.split(/\s+/)[0];
-    data = await postSearch(`winner-name=${looseTerm}`, { page, limit });
-    usedFallback = true;
+  if (data.notices?.length) {
+    return {
+      notices: data.notices.map(normalizeNotice),
+      total: data.totalNoticeCount || 0,
+      usedFallback: false
+    };
   }
 
+  // TED gemmer ofte navnet uden selskabsform ("Atea" frem for "Atea A/S"), så
+  // et fuldt frase-match kan misse et reelt træf. Prøv kernenavnet — men kun
+  // hvis det faktisk er kortere end det fulde navn, og kun som frase. En
+  // tidligere version søgte her på FØRSTE ORD uden anførselstegn, hvilket for
+  // fx "Plan 5 Film v/Marc Schmidt" gav 924 urelaterede europæiske kontrakter
+  // (alt med "Planungsgesellschaft", "planning", …) præsenteret som træf.
+  const core = coreCompanyName(name);
+  if (core.length < 3 || normalizeForMatch(core) === normalizeForMatch(name)) {
+    return { notices: [], total: 0, usedFallback: false };
+  }
+
+  const fallback = await postSearch(`winner-name="${escapeQueryPhrase(core)}"`, { page, limit });
+
+  // Frase-matchet er stadig TED's egen fortolkning — verificér at vindernavnet
+  // rent faktisk indeholder kernenavnet, frem for at stole blindt på det.
+  const needle = normalizeForMatch(core);
+  const verified = (fallback.notices || []).filter((notice) =>
+    normalizeForMatch(allTexts(notice["winner-name"])).includes(needle)
+  );
+
   return {
-    notices: (data.notices || []).map(normalizeNotice),
-    total: data.totalNoticeCount || 0,
-    usedFallback
+    notices: verified.map(normalizeNotice),
+    // Ikke fallback.totalNoticeCount: den tæller TED's ufiltrerede træf, og
+    // ville overdrive antallet efter vores egen verifikation.
+    total: verified.length,
+    usedFallback: true
   };
 }
 
