@@ -10,7 +10,9 @@
 //    på-anmodning (kun for det valgte år) med native DOMParser.
 //
 // Begge kilder er kun http:// og svarer nogle gange langsomt, derfor går de
-// gennem lokale proxier med høj timeout (se vite.config.js).
+// gennem Edge Functions ("regnskab-search" og "regnskab-doc"), som desuden
+// cacher svarene — søgninger i et døgn, dokumenter i 30 dage, da et
+// offentliggjort årsregnskab ikke ændrer sig bagefter.
 //
 // VIGTIGT om XBRL-parsingen: Danske regnskaber bruger vilkårlige namespace-
 // præfikser for samme koncept (fx både "fsa:Equity" og "d:Equity" for
@@ -21,8 +23,7 @@
 // dokument) — det håndteres IKKE i v1; vi returnerer da "facts_unavailable"
 // fremfor at gætte eller vise forkerte tal.
 
-const SEARCH_URL = "/api/regnskab-search";
-const DOC_PROXY_PREFIX = "/api/regnskab-doc";
+import { getFromFunction, postToFunction } from "../lib/apiClient";
 
 const TOPLINE_CANDIDATES = [
   { concept: "Revenue", label: "Nettoomsætning" },
@@ -188,11 +189,7 @@ export async function listAvailableRegnskaber(cvr, options = {}) {
     sort: [{ offentliggoerelsesTidspunkt: "desc" }]
   };
 
-  const searchResponse = await fetch(SEARCH_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(searchBody)
-  });
+  const searchResponse = await postToFunction("/regnskab-search", searchBody);
 
   if (!searchResponse.ok) {
     throw new Error(`Regnskabssøgning fejlede (HTTP ${searchResponse.status})`);
@@ -244,7 +241,7 @@ export async function getFinancialsForEntry(entry) {
   if (!mainDoc) return { status: "facts_unavailable", sourceUrl };
 
   const docPath = new URL(mainDoc.dokumentUrl).pathname;
-  const docResponse = await fetch(`${DOC_PROXY_PREFIX}${docPath}`);
+  const docResponse = await getFromFunction(`/regnskab-doc${docPath}`);
   if (!docResponse.ok) {
     throw new Error(`Kunne ikke hente regnskabsdokument (HTTP ${docResponse.status})`);
   }

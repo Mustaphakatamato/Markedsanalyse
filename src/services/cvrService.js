@@ -2,14 +2,16 @@
 // ingen login, men:
 // - 50 opslag/dag pr. IP (giver "QUOTA_EXCEEDED" når loftet er nået)
 // - kræver en custom User-Agent-header, som browsere ikke selv kan sætte,
-//   derfor går kaldet gennem /api/cvr-proxyen (se vite.config.js), som
-//   sætter headeren server-side.
+//   derfor går kaldet gennem Edge Function'en "cvr" (supabase/functions/cvr),
+//   som sætter headeren server-side og desuden cacher svaret i syv dage —
+//   det er dét der gør 50-opslags-loftet til et ikke-problem ved gentagne
+//   opslag på samme virksomhed.
 //
 // Denne API leverer stamdata (navn, adresse, branche, status, ansatte) — den
 // indeholder IKKE regnskabstal. Økonomi/nøgletal håndteres derfor separat i
 // financialsService.js (mock).
 
-const CVR_SEARCH_URL = "/api/cvr/api";
+import { getFromFunction } from "../lib/apiClient";
 
 function normalizeCompany(raw) {
   return {
@@ -43,10 +45,7 @@ export async function lookupCompany(query) {
   const term = query.trim();
   if (!term) return { status: "not_found", message: "Angiv et firmanavn eller CVR-nummer." };
 
-  const isCvrNumber = /^\d{8}$/.test(term);
-  const param = isCvrNumber ? `search=${term}` : `search=${encodeURIComponent(term)}`;
-
-  const response = await fetch(`${CVR_SEARCH_URL}?${param}&country=dk`);
+  const response = await getFromFunction(`/cvr?search=${encodeURIComponent(term)}`);
   const data = await response.json().catch(() => null);
 
   if (!data) {
