@@ -27,6 +27,13 @@ function formatDkkMio(value) {
   return `${normalized.toLocaleString("da-DK", { maximumFractionDigits: 1 })} mio. DKK`;
 }
 
+// Procenter skal formateres som beløbene ovenfor — dansk decimalkomma. Uden
+// dette viser tallene sig som "24.3%" side om side med "5.290,5 mio. DKK".
+function formatPercent(value) {
+  if (value == null) return "–";
+  return `${value.toLocaleString("da-DK", { maximumFractionDigits: 1 })}%`;
+}
+
 function formatDate(isoDate) {
   return isoDate ? isoDate.slice(0, 10) : "–";
 }
@@ -171,7 +178,8 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
     trendByYear.some((d) => d.financials?.status === "ok" && d.financials[def.key] != null)
   );
   const activeMetricDef = availableMetrics.find((def) => def.key === selectedMetric) || null;
-  const formatMetricValue = (value) => (activeMetricDef?.isPercent ? `${value}%` : formatDkkMio(value));
+  const formatMetricValue = (value) =>
+    activeMetricDef?.isPercent ? formatPercent(value) : formatDkkMio(value);
 
   const companyFiscalYear = financials.status === "ok" ? financials.fiscalYearEnd?.slice(0, 4) : null;
   const benchmark =
@@ -302,7 +310,7 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                   </div>
                   <div className="space-between">
                     <span>Soliditetsgrad</span>
-                    <strong>{financials.solvencyPct != null ? `${financials.solvencyPct}%` : "–"}</strong>
+                    <strong>{formatPercent(financials.solvencyPct)}</strong>
                   </div>
                   {financials.sourceUrl && (
                     <a href={financials.sourceUrl} target="_blank" rel="noreferrer">
@@ -386,7 +394,7 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                   <div className="space-between">
                     <span>Soliditet vs. branche</span>
                     <strong className={financials.solvencyPct >= benchmark.solvencyPct ? "text-ok" : "text-danger"}>
-                      {financials.solvencyPct}% vs. {benchmark.solvencyPct}%
+                      {formatPercent(financials.solvencyPct)} vs. {formatPercent(benchmark.solvencyPct)}
                     </strong>
                   </div>
                 )}
@@ -397,7 +405,7 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                     <strong
                       className={companyProfitMarginPct >= benchmark.profitMarginPct ? "text-ok" : "text-danger"}
                     >
-                      {companyProfitMarginPct}% vs. {benchmark.profitMarginPct}%
+                      {formatPercent(companyProfitMarginPct)} vs. {formatPercent(benchmark.profitMarginPct)}
                     </strong>
                   </div>
                 )}
