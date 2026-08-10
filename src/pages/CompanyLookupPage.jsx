@@ -215,8 +215,28 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
   const companyFiscalYear = financials.status === "ok" ? financials.fiscalYearEnd?.slice(0, 4) : null;
   const benchmark =
     industryBenchmark && companyFiscalYear ? pickClosestBenchmarkYear(industryBenchmark, companyFiscalYear) : null;
+  // Overskudsgrad (resultat/topline) giver kun mening når topline reelt
+  // afspejler forretningens omfang. Rene holdingselskaber mangler "Revenue"
+  // helt, så topline falder ned til fx GrossProfitLoss — ofte bare et par
+  // administrationsomkostninger i minus — mens resultatet (bundlinjen)
+  // domineres af finansielle poster (nedskrivninger på kapitalandele,
+  // koncernrenter mv.), som intet har med topline at gøre. Divideres et
+  // stort resultat med en næsten-nul topline, får man tal i titusindvis af
+  // procent — og er begge negative, ligner det oven i købet et flot
+  // overskud (fx PureGym Denmark Holding, CVR 36700386, FY2025: -38,5 mio.
+  // kr. i resultat / -74.000 kr. i GrossProfitLoss ⇒ ~52.000% "overskudsgrad").
+  //
+  // Kræv derfor at topline udgør mindst 5% af resultatets størrelse, før
+  // brøken vises som en overskudsgrad.
+  const MIN_TOPLINE_SHARE_OF_RESULT = 0.05;
+  const profitMarginNotMeaningful =
+    financials.status === "ok" &&
+    financials.result != null &&
+    !!financials.topline &&
+    Math.abs(financials.topline) < Math.abs(financials.result) * MIN_TOPLINE_SHARE_OF_RESULT;
+
   const companyProfitMarginPct =
-    financials.status === "ok" && financials.result != null && financials.topline
+    financials.status === "ok" && financials.result != null && financials.topline && !profitMarginNotMeaningful
       ? Number(((financials.result / financials.topline) * 100).toFixed(1))
       : null;
 
@@ -471,6 +491,14 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                       {formatPercent(companyProfitMarginPct)} vs. {formatPercent(benchmark.profitMarginPct)}
                     </strong>
                   </div>
+                )}
+
+                {profitMarginNotMeaningful && (
+                  <p className="muted small">
+                    Overskudsgrad ikke vist — {financials.toplineLabel || "topline"} (
+                    {formatDkkMio(financials.topline)}) er for lille i forhold til årets resultat til at udgøre et
+                    meningsfuldt nøgletal. Typisk et holdingselskab uden reelle driftsindtægter.
+                  </p>
                 )}
 
                 {benchmark && (
