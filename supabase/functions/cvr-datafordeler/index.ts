@@ -1,7 +1,7 @@
 // CVR-opslag mod Datafordelerens GraphQL-tjeneste — Erhvervsstyrelsens egen
 // kilde, uden cvrapi.dk's loft på 50 opslag/dag.
 //
-// Fire ting om tjenesten former koden nedenfor. Alle er verificeret direkte
+// Fem ting om tjenesten former koden nedenfor. Alle er verificeret direkte
 // mod API'et, ikke læst i dokumentationen (som på flere punkter er forkert):
 //
 // 1. VERSIONEN ER v2. Dokumentationens eksempler bruger v3; både v1 og v3
@@ -18,6 +18,11 @@
 // 4. DATA ER BITEMPORALT. CVR_Navn for ATEA returnerer fire navne tilbage til
 //    2000; kun rækken med åben virkningsperiode er det nuværende navn.
 //    pickCurrent() vælger den.
+//
+// 5. CVR_Virksomhed.status ER IKKE EN RIGTIG STATUSKODE. Den svarer "aktiv"
+//    for alt uden ophørsdato — også et selskab under konkurs i 10+ år (OW
+//    Bunker A/S, CVR 34900167). Reel konkurs/tvangsopløsnings-status ligger i
+//    CVR_Kreditoplysninger i stedet, se creditRemark nedenfor.
 
 import { handlePreflight, json } from "../_shared/http.ts";
 import { readCache, writeCache } from "../_shared/cache.ts";
@@ -151,9 +156,9 @@ Deno.serve(async (req) => {
     const påEnhed = `CVREnhedsId: { eq: "${String(virksomhed.id)}" }`;
     const temporale = "virkningFra virkningTil registreringTil";
 
-    // Fem parallelle kald — ét pr. entitet, da tjenesten ikke tillader flere
+    // Seks parallelle kald — ét pr. entitet, da tjenesten ikke tillader flere
     // rodfelter i samme forespørgsel.
-    const [navnNodes, brancheNodes, formNodes, adresseNodes, ansatteNodes] = await Promise.all([
+    const [navnNodes, brancheNodes, formNodes, adresseNodes, ansatteNodes, kreditNodes] = await Promise.all([
       fetchNodes("CVR_Navn", påEnhed, `vaerdi ${temporale}`),
       fetchNodes("CVR_Branche", påEnhed, `vaerdi vaerdiTekst ${temporale}`),
       fetchNodes("CVR_Virksomhedsform", påEnhed, `vaerdi vaerdiTekst ${temporale}`),
@@ -166,13 +171,30 @@ Deno.serve(async (req) => {
       ),
       // Højt loft: kvartalsvise rækker siden 2014 er hurtigt over 100, og vi
       // skal have den nyeste med.
-      fetchNodes("CVR_Beskaeftigelse", påEnhed, "antal intervalFra intervalTil datoFra datoTil", 1000)
+      fetchNodes("CVR_Beskaeftigelse", påEnhed, "antal intervalFra intervalTil datoFra datoTil", 1000),
+      // CVR_Virksomhed.status er IKKE en rigtig statuskode — verificeret ved
+      // direkte opslag (bl.a. OW Bunker A/S, CVR 34900167, under konkurs
+      // siden 2014): feltet svarer altid "aktiv", uanset konkurs/
+      // tvangsopløsning. Den reelle, opdaterede status ligger i stedet i
+      // CVR_Kreditoplysninger — samme kilde Erhvervsstyrelsen selv bruger til
+      // Statstidende-bekendtgørelser (konkursdekret, skiftesamling,
+      // tvangsopløsning mv.). Tomt array = intet at bemærke.
+      fetchNodes(
+        "CVR_Kreditoplysninger",
+        påEnhed,
+        `kreditoplysningstekst statusvaerdiTekst ${temporale}`,
+        50
+      )
     ]);
 
     const navn = pickCurrent(navnNodes);
     const branche = pickCurrent(brancheNodes);
     const form = pickCurrent(formNodes);
     const adresse = pickCurrent(adresseNodes);
+    // Kun den ÅBNE kreditoplysning (virkningTil: null) er stadig gældende —
+    // afsluttede sager (fx en tvangsopløsning der blev genoptaget) skal ikke
+    // vises som et aktuelt problem.
+    const aabenKredit = kreditNodes.find((n) => n.virkningTil == null) ?? null;
 
     const company = {
       cvr: String(virksomhed.CVRNummer),
@@ -185,6 +207,15 @@ Deno.serve(async (req) => {
       endDate: (virksomhed.virksomhedOphoersdato as string) ?? null,
       employeesRange: pickEmployees(ansatteNodes),
       active: virksomhed.virksomhedOphoersdato == null,
+      // Fx { type: "Konkurs", stage: "Skiftesamling", since: "2019-05-11" } —
+      // myndighedens egen ordlyd, ingen oversættelse/gætværk fra os.
+      creditRemark: aabenKredit
+        ? {
+            type: aabenKredit.kreditoplysningstekst as string,
+            stage: aabenKredit.statusvaerdiTekst as string,
+            since: aabenKredit.virkningFra as string
+          }
+        : null,
       source: "datafordeler"
     };
 

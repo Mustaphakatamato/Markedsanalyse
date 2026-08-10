@@ -38,6 +38,15 @@ function formatDate(isoDate) {
   return isoDate ? isoDate.slice(0, 10) : "–";
 }
 
+// company.creditRemark kommer fra CVR_Kreditoplysninger (se
+// cvr-datafordeler/index.ts) — Erhvervsstyrelsens egen løbende registrering
+// af konkurs/tvangsopløsning/likvidation mv., med myndighedens egen ordlyd.
+// null betyder intet åbent forhold at bemærke.
+function formatCreditRemark(remark) {
+  if (!remark) return null;
+  return `${remark.type} — ${remark.stage} (siden ${formatDanishDate(remark.since)})`;
+}
+
 // Datafordeleren leverer datoer i ISO-format ("1991-01-09"). Vist råt stak de
 // ud fra resten af siden, der er gennemført dansk.
 function formatDanishDate(isoDate) {
@@ -319,8 +328,8 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                 <h2 className="hero-title-sm">{company.name}</h2>
                 <p className="muted">{company.fullAddress || "Adresse ikke oplyst"}</p>
               </div>
-              <span className={`pill ${company.active ? "pill-ok" : "pill-warn"}`}>
-                {company.active ? "Aktiv" : "Ophørt"}
+              <span className={`pill ${company.active && !company.creditRemark ? "pill-ok" : "pill-warn"}`}>
+                {!company.active ? "Ophørt" : company.creditRemark ? company.creditRemark.type : "Aktiv"}
               </span>
             </div>
 
@@ -461,7 +470,7 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                 <div className="space-between">
                   <span>Samlet vurdering</span>
                   <strong>
-                    {esg.sanctionsMatch
+                    {esg.sanctionsMatch || company.creditRemark
                       ? "Kræver afklaring"
                       : financials.status === "ok" && financials.solvencyPct != null
                         ? financials.solvencyPct >= 30
@@ -472,6 +481,13 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                         : "Utilstrækkelig data"}
                   </strong>
                 </div>
+
+                {company.creditRemark && (
+                  <div className="space-between">
+                    <span>Virksomhedsstatus (CVR)</span>
+                    <strong className="text-danger">{formatCreditRemark(company.creditRemark)}</strong>
+                  </div>
+                )}
 
                 {benchmark?.solvencyPct != null && financials.solvencyPct != null && (
                   <div className="space-between">
