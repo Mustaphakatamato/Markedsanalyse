@@ -8,3 +8,5 @@ dist
 
 # Hentede CVR-filer fra Datafordeleren (flere hundrede MB)
 .cvr-data
+.vercel
+.env*

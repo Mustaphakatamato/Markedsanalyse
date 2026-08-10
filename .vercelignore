@@ -1,0 +1,7 @@
+# Vercel CLI-uploads følger ikke altid .gitignore fuldt ud ved directory-
+# deploy (uden git-integration) — .cvr-data (flere hundrede MB hentede
+# CVR-filer) skal aldrig med i deploy-uploaden.
+.cvr-data
+node_modules
+dist
+.git
