@@ -3,6 +3,7 @@ import { hentVirksomhed, søgVirksomheder } from "../services/cvrService";
 import { searchWonContractsByCompany } from "../services/tedService";
 import { getAvailableFiscalYears, getFinancialsForYear } from "../services/financialsService";
 import { getESGProfile } from "../services/esgService";
+import { checkSanctions } from "../services/sanctionsService";
 import { getIndustryBenchmark, pickClosestBenchmarkYear } from "../services/industryBenchmarkService";
 import TrendChart from "../components/charts/TrendChart";
 
@@ -65,6 +66,8 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
   // Så lader vi brugeren vælge frem for at gætte.
   const [candidates, setCandidates] = useState([]);
   const [esg, setEsg] = useState(null);
+  const [sanctions, setSanctions] = useState(null);
+  const [sanctionsLoading, setSanctionsLoading] = useState(false);
   const [contracts, setContracts] = useState({ notices: [], total: 0, usedFallback: false });
   const [contractsLoading, setContractsLoading] = useState(false);
   const [contractsError, setContractsError] = useState(null);
@@ -181,6 +184,8 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
     setSelectedMetric(null);
     setTrendAsTable(false);
     setIndustryBenchmark(null);
+    setSanctions(null);
+    setSanctionsLoading(true);
 
     const contractsPromise = searchWonContractsByCompany(result.company.name)
       .then(setContracts)
@@ -199,7 +204,12 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
       .then(setIndustryBenchmark)
       .catch(() => setIndustryBenchmark(null));
 
-    await Promise.all([contractsPromise, financialsPromise, benchmarkPromise]);
+    const sanctionsPromise = checkSanctions(result.company.name)
+      .then(setSanctions)
+      .catch(() => setSanctions(null))
+      .finally(() => setSanctionsLoading(false));
+
+    await Promise.all([contractsPromise, financialsPromise, benchmarkPromise, sanctionsPromise]);
   };
 
   useEffect(() => {
@@ -436,30 +446,43 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
             </div>
 
             <div className="card">
-              <div className="space-between">
-                <h3>ESG &amp; compliance</h3>
-                <span className="pill pill-mock">Demo-data</span>
-              </div>
+              <h3>ESG &amp; compliance</h3>
               <div className="stack text-sm">
                 <div className="space-between">
-                  <span>CSR-rapport indsendt</span>
+                  <span>EU-sanktionstjek</span>
+                  <strong className={sanctions?.match ? "text-danger" : "text-ok"}>
+                    {sanctionsLoading ? "Tjekker…" : sanctions?.match ? "Match fundet" : "Intet match"}
+                  </strong>
+                </div>
+                {sanctions?.match && (
+                  <p className="muted small">
+                    Ramt: {sanctions.fund.map((f) => `${f.navn} (${f.programme || "ukendt regime"})`).join(", ")}
+                  </p>
+                )}
+                <p className="muted small">
+                  Kilde: EU's konsoliderede sanktionsliste · eksakt navnematch — stavevarianter og
+                  translitterationer kan derfor undslippe.
+                </p>
+
+                <div className="space-between">
+                  <span>
+                    CSR-rapport indsendt <span className="pill pill-mock">Demo</span>
+                  </span>
                   <strong>
                     {esg.csrReportFiled ? `Ja (${esg.csrReportYear})` : "Nej"}
                   </strong>
                 </div>
                 <div className="space-between">
-                  <span>Klimarapportering</span>
+                  <span>
+                    Klimarapportering <span className="pill pill-mock">Demo</span>
+                  </span>
                   <strong>{esg.climateReporting ? "Ja" : "Nej"}</strong>
                 </div>
                 <div className="space-between">
-                  <span>Whistleblowerordning</span>
+                  <span>
+                    Whistleblowerordning <span className="pill pill-mock">Demo</span>
+                  </span>
                   <strong>{esg.whistleblowerScheme ? "Ja" : "Nej"}</strong>
-                </div>
-                <div className="space-between">
-                  <span>EU-sanktionstjek</span>
-                  <strong className={esg.sanctionsMatch ? "text-danger" : "text-ok"}>
-                    {esg.sanctionsMatch ? "Match fundet" : "Intet match"}
-                  </strong>
                 </div>
               </div>
             </div>
@@ -470,7 +493,7 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                 <div className="space-between">
                   <span>Samlet vurdering</span>
                   <strong>
-                    {esg.sanctionsMatch || company.creditRemark
+                    {sanctions?.match || company.creditRemark
                       ? "Kræver afklaring"
                       : financials.status === "ok" && financials.solvencyPct != null
                         ? financials.solvencyPct >= 30
