@@ -7,7 +7,15 @@
 // virksomheder der fejlagtigt flages) er værre end et der overser en
 // stavevariant — falske negativer er acceptable her, falske positiver er det
 // ikke, i en due diligence-kontekst der bruges direkte i en risikovurdering.
-
+//
+// KONFIDENS-NIVEAUER: eksakt navnematch er stadig ikke nok i sig selv. Et
+// stikprøve-join mod CVR-indekset viste adskillige forkerte matches mod korte
+// enkeltord-aliaser på listen ("Leo", "Adam", "Bach", "Aurora", "TSA", "RGB")
+// — fornavne og forkortelser knyttet til udpegede terrorister/enheder, som
+// tilfældigvis også er navnet på en helt almindelig dansk enkeltmandsvirksomhed.
+// Et navn der hverken indeholder mellemrum (altså ét enkelt ord) eller er
+// mindst 10 tegn langt regnes derfor kun som LAV konfidens — det driver ikke
+// "Match fundet"/Kræver afklaring, men vises stadig, så intet skjules.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { handlePreflight, json } from "../_shared/http.ts";
 
@@ -29,6 +37,14 @@ function normaliser(navn: string): string {
     .trim();
 }
 
+const MIN_ENKELTORD_LAENGDE = 10;
+
+function konfidens(navn: string): "høj" | "lav" {
+  const trimmet = navn.trim();
+  const flereOrd = /\s/.test(trimmet);
+  return flereOrd || trimmet.length >= MIN_ENKELTORD_LAENGDE ? "høj" : "lav";
+}
+
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
@@ -47,16 +63,21 @@ Deno.serve(async (req) => {
     return json({ error: `Sanktionstjek fejlede: ${error.message}` }, { status: 500 });
   }
 
+  // Flere rækker kan ramme samme normaliserede navn (forskellige enheder, fx
+  // to forskellige sanktionerede parter der tilfældigvis translittereres
+  // ens) — vis dem alle, gør ikke selv den endelige vurdering.
+  const fund = (data ?? []).map((r) => ({
+    navn: r.navn as string,
+    type: (r.subjekt_type as string | null) ?? null,
+    programme: (r.programme as string | null) ?? null,
+    confidence: konfidens(r.navn as string)
+  }));
+
   return json({
-    match: (data ?? []).length > 0,
-    // Flere rækker kan ramme samme normaliserede navn (forskellige enheder,
-    // fx to forskellige sanktionerede parter der tilfældigvis translittereres
-    // ens) — vis dem alle, gør ikke selv den vurdering.
-    fund: (data ?? []).map((r) => ({
-      navn: r.navn as string,
-      type: (r.subjekt_type as string | null) ?? null,
-      programme: (r.programme as string | null) ?? null
-    })),
+    // Kun høj-konfidens fund tæller som et rigtigt "match" der skal kræve
+    // afklaring — lav-konfidens fund vises stadig i "fund", men flager ikke.
+    match: fund.some((f) => f.confidence === "høj"),
+    fund,
     kilde: "EU's konsoliderede sanktionsliste (Financial Sanctions Files)"
   });
 });

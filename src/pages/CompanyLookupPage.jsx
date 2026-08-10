@@ -450,18 +450,27 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
               <div className="stack text-sm">
                 <div className="space-between">
                   <span>EU-sanktionstjek</span>
-                  <strong className={sanctions?.match ? "text-danger" : "text-ok"}>
-                    {sanctionsLoading ? "Tjekker…" : sanctions?.match ? "Match fundet" : "Intet match"}
+                  <strong className={sanctions?.fund?.length ? "text-danger" : "text-ok"}>
+                    {sanctionsLoading
+                      ? "Tjekker…"
+                      : sanctions?.match
+                        ? "Match fundet"
+                        : sanctions?.fund?.length
+                          ? "Muligt match — kræver verifikation"
+                          : "Intet match"}
                   </strong>
                 </div>
-                {sanctions?.match && (
+                {sanctions?.fund?.length > 0 && (
                   <p className="muted small">
-                    Ramt: {sanctions.fund.map((f) => `${f.navn} (${f.programme || "ukendt regime"})`).join(", ")}
+                    {sanctions.match ? "Ramt: " : "Enkeltord-match, sandsynligvis tilfældigt: "}
+                    {sanctions.fund.map((f) => `${f.navn} (${f.programme || "ukendt regime"})`).join(", ")}
                   </p>
                 )}
                 <p className="muted small">
                   Kilde: EU's konsoliderede sanktionsliste · eksakt navnematch — stavevarianter og
-                  translitterationer kan derfor undslippe.
+                  translitterationer kan derfor undslippe. Korte enkeltords-match (fx et fornavn der
+                  også er alias for en udpeget person) flager som "kræver verifikation", ikke som et
+                  sikkert match.
                 </p>
 
                 <div className="space-between">
