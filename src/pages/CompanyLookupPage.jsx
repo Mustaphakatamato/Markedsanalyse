@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { hentVirksomhed, søgVirksomheder } from "../services/cvrService";
 import { searchWonContractsByCompany } from "../services/tedService";
 import { getNoticeDetail } from "../services/tedNoticeService";
@@ -66,6 +66,14 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
   // Netcompany A/S, Netcompany Group A/S og Netcompany Banking Services A/S.
   // Så lader vi brugeren vælge frem for at gætte.
   const [candidates, setCandidates] = useState([]);
+  // Live forslag mens man skriver — separat fra candidates ovenfor, som først
+  // vises EFTER en fuld søgning (Enter/knap) hvis den giver flere træf.
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const searchBoxRef = useRef(null);
+  // Beskytter mod en langsom, forældet søgning der overskriver et nyere svar
+  // (fx hvis "net" svarer senere end det efterfølgende "netc").
+  const suggestionRequestRef = useRef(0);
   const [esg, setEsg] = useState(null);
   const [sanctions, setSanctions] = useState(null);
   const [sanctionsLoading, setSanctionsLoading] = useState(false);
@@ -249,6 +257,49 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillToken]);
 
+  // Live forslag mens man skriver. Debounces 250ms, så vi ikke sender ét
+  // søgekald pr. tastetryk — samme navneindeks som "Slå op"-knappen bruger
+  // (søgVirksomheder), bare uden knappen. Et 8-cifret CVR-nummer giver
+  // {status: "cvr"} fra søgVirksomheder uden noget netværkskald, og skal ikke
+  // vise forslag (der er intet at foreslå — det ER allerede entydigt).
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const requestId = ++suggestionRequestRef.current;
+      const result = await søgVirksomheder(trimmed);
+      if (requestId !== suggestionRequestRef.current) return; // et nyere kald er undervejs
+      setSuggestions(result.status === "ok" ? result.traf : []);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // Luk forslagsboksen ved klik udenfor. Bruger mousedown (ikke inputtets
+  // onBlur), så et klik PÅ et forslag ikke lukker boksen før onClick når at
+  // køre — mousedown på selve forslaget rammer stadig containeren og lukker
+  // derfor ikke boksen for tidligt.
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) {
+        setSuggestionsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const pickSuggestion = (kandidat) => {
+    setQuery(kandidat.navn);
+    setSuggestionsOpen(false);
+    setSuggestions([]);
+    loadCompany(kandidat.cvr);
+  };
+
   // isMultiWinner-notices holdes UDENFOR summen: "value" der er notice'ens
   // egen samlede loftværdi, ikke hvad virksomheden selv vandt (se
   // tedService.js). At lægge den sammen med rigtige enkeltkontrakter ville
@@ -307,20 +358,47 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
         </div>
 
         <div className="filters-grid">
-          <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ gridColumn: "1 / -1", position: "relative" }} ref={searchBoxRef}>
             <label>Firmanavn eller CVR-nummer</label>
             <input
               className="input"
               placeholder="Fx Netcompany eller 25511484"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
+              autoComplete="off"
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setSuggestionsOpen(true);
+              }}
+              onFocus={() => suggestions.length > 0 && setSuggestionsOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setSuggestionsOpen(false);
+                  runSearch(query);
+                } else if (e.key === "Escape") {
+                  setSuggestionsOpen(false);
+                }
+              }}
             />
+            {suggestionsOpen && suggestions.length > 0 && (
+              <ul className="suggestions-list">
+                {suggestions.map((kandidat) => (
+                  <li key={kandidat.cvr}>
+                    <button type="button" onClick={() => pickSuggestion(kandidat)}>
+                      <span>{kandidat.navn}</span>
+                      <span className="muted small">CVR {kandidat.cvr}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="button-row align-end">
             <button
               className="btn btn-primary"
-              onClick={() => runSearch(query)}
+              onClick={() => {
+                setSuggestionsOpen(false);
+                runSearch(query);
+              }}
               disabled={status === "loading" || !query.trim()}
             >
               {status === "loading" ? "Slår op…" : "Slå op"}

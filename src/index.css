@@ -262,6 +262,63 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.15);
 }
 
+/* Live forslag under firmanavn-feltet i CompanyLookupPage. Positioneres
+   relativt til den ref'ede wrapper om label+input (position: relative sat
+   inline der), ikke relativt til .filters-grid — ellers ville boksen ikke
+   følge feltets egen bredde/placering i grid-layoutet. */
+.suggestions-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 4px 0 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.suggestions-list li + li {
+  margin-top: 2px;
+}
+
+.suggestions-list button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+}
+
+.suggestions-list button:hover,
+.suggestions-list button:focus-visible {
+  background: var(--card-soft);
+  outline: none;
+}
+
+.suggestions-list button span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestions-list button span:last-child {
+  flex-shrink: 0;
+}
+
 .button-row {
   display: flex;
   gap: 10px;
