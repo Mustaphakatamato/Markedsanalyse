@@ -41,6 +41,33 @@ import { formatDkkMio, formatPercent, formatDate } from "../lib/format";
 // søges op manuelt hver gang.
 const OWN_COMPANY_NAME = "Devoteam A/S";
 
+// Et refresh mistede tidligere HELE analysen — det udbud man havde hentet,
+// konkurrentfeltet, alt. Vi gemmer derfor kun en "pointer" (notice-nummer +
+// scope), ikke selve de hentede data: en frisk genhentning ved opstart er
+// billig (samme server-side caches som selve opslaget rammer alligevel) og
+// garanterer at tallene stadig er friske, i stedet for at vise noget der
+// kan være blevet forældet siden sidst. Samme "markedsanalyse.*"-nøglemønster
+// som ThemeToggle/ProjectsContext/App.jsx.
+const NOTICE_STORAGE_KEY = "markedsanalyse.tilbudsgiverNotice";
+const SCOPE_STORAGE_KEY = "markedsanalyse.tilbudsgiverScope";
+
+function readStoredScope() {
+  try {
+    const stored = localStorage.getItem(SCOPE_STORAGE_KEY);
+    return stored === "EU" ? "EU" : "DK";
+  } catch {
+    return "DK";
+  }
+}
+
+function readStoredNotice() {
+  try {
+    return localStorage.getItem(NOTICE_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
 // Genkender både en rå notice-nummer-form ("558609-2026") og et hvilket som
 // helst TED-link der indeholder den samme streng et sted i URL'en — ingen
 // grund til at kræve at brugeren selv piller nummeret ud af et link.
@@ -116,7 +143,15 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
   // SELVE udbuddet (searchActiveNotices); konkurrentfeltet for et allerede
   // valgt udbud er uafhængigt af dette valg, da det altid følger den
   // konkrete ordregiver.
-  const [searchScope, setSearchScope] = useState("DK");
+  const [searchScope, setSearchScope] = useState(readStoredScope);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SCOPE_STORAGE_KEY, searchScope);
+    } catch {
+      /* private mode — scope-valget holder bare kun sessionen ud */
+    }
+  }, [searchScope]);
 
   useEffect(() => {
     const trimmed = noticeInput.trim();
@@ -216,6 +251,14 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
       }
       setRequirements(data);
       setStatus("found");
+      // Kun gemt ved et RIGTIGT fund — en fejlet søgning skal ikke slette et
+      // tidligere gyldigt udbud, man kan stadig ville se det igen efter et
+      // refresh.
+      try {
+        localStorage.setItem(NOTICE_STORAGE_KEY, publicationNumber);
+      } catch {
+        /* private mode — udbuddet holder bare kun sessionen ud */
+      }
 
       const primaryCpv = data.cpvCodes[0] || data.lots[0]?.cpvCodes[0];
       if (primaryCpv) {
@@ -304,6 +347,18 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     setFallbackResults([]);
     loadTenderByPublicationNumber(notice.publicationNumber);
   };
+
+  // Genindlæser det senest fundne udbud ved opstart, hvis der er ét gemt —
+  // se NOTICE_STORAGE_KEY-kommentaren for hvorfor det genhentes frisk i
+  // stedet for at gemme selve resultatet.
+  useEffect(() => {
+    const stored = readStoredNotice();
+    if (!stored) return;
+    setNoticeInput(stored);
+    loadTenderByPublicationNumber(stored);
+    // Skal kun køre ved opstart.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ownCompanyFiscalYear = ownFinancials?.status === "ok" ? ownFinancials.fiscalYearEnd?.slice(0, 4) : null;
   const ownBenchmarkForYear =
