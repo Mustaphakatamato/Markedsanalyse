@@ -34,6 +34,13 @@ import SourceBadge from "../components/ui/SourceBadge";
 import { Working, SkeletonRows } from "../components/ui/Loading";
 import { formatDkkMio, formatPercent, formatDate } from "../lib/format";
 
+// Denne udgave af appen er bygget til ÉN bestemt tilbudsgiver — Devoteam A/S
+// — ikke et generelt "slå jeres firma op"-værktøj. Egen profil indlæses
+// derfor automatisk én gang ved opstart (loadOwnProfile, nedenfor), og er
+// altid med i konkurrentfeltet for ethvert udbud man slår op, uden at skulle
+// søges op manuelt hver gang.
+const OWN_COMPANY_NAME = "Devoteam A/S";
+
 // Genkender både en rå notice-nummer-form ("558609-2026") og et hvilket som
 // helst TED-link der indeholder den samme streng et sted i URL'en — ingen
 // grund til at kræve at brugeren selv piller nummeret ud af et link.
@@ -79,13 +86,18 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketError, setMarketError] = useState(null);
 
-  const [ownQuery, setOwnQuery] = useState("");
+  // Ingen direkte søgning her — se OWN_COMPANY_NAME. Indlæses én gang ved
+  // opstart (useEffect nedenfor), ikke pr. udbud.
   const [ownStatus, setOwnStatus] = useState("idle");
-  const [ownCandidates, setOwnCandidates] = useState([]);
   const [ownCompany, setOwnCompany] = useState(null);
   const [ownFinancials, setOwnFinancials] = useState(null);
   const [ownBenchmark, setOwnBenchmark] = useState(null);
   const [ownContracts, setOwnContracts] = useState(null);
+
+  // Vises når "Hent udbud" ikke gav et direkte notice-nummer OG fritekst-
+  // søgningen heller ikke fandt noget entydigt — så man i det mindste får
+  // "det der minder mest om" i stedet for en ren fejlmeddelelse.
+  const [fallbackResults, setFallbackResults] = useState([]);
 
   // Live forslag på titel/ordregiver mens man skriver — se
   // searchActiveNotices() i tedService.js for hvorfor det IKKE kan opdatere
@@ -133,6 +145,51 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Indlæser Devoteams egen profil én gang ved opstart — ikke pr. udbud, da
+  // den ikke ændrer sig undervejs i en session. Samme matching-disciplin som
+  // konkurrenterne (pickBestCvrMatch): "Devoteam A/S" skal ramme CVR
+  // 78068213 eksakt, ikke fx "Devoteam Data Driven ApS" eller "Devoteam
+  // Technology Consulting A/S", som er andre, selvstændige CVR-numre.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setOwnStatus("loading");
+      const search = await søgVirksomheder(OWN_COMPANY_NAME);
+      const match = search.status === "ok" ? pickBestCvrMatch(search.traf, OWN_COMPANY_NAME) : null;
+      if (!match) {
+        if (!cancelled) setOwnStatus("not_found");
+        return;
+      }
+
+      const result = await hentVirksomhed(match.cvr);
+      if (cancelled) return;
+      if (result.status !== "ok") {
+        setOwnStatus("error");
+        return;
+      }
+      setOwnCompany(result.company);
+      setOwnStatus("found");
+
+      const [financials, contracts, benchmark] = await Promise.all([
+        findLatestRegnskab(match.cvr),
+        searchWonContractsByCompany(result.company.name),
+        getIndustryBenchmark(result.company.industryCode).catch(() => null)
+      ]);
+      if (cancelled) return;
+      setOwnFinancials(financials);
+      setOwnContracts(contracts);
+      setOwnBenchmark(benchmark);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Kører kun ved opstart — OWN_COMPANY_NAME er en konstant, ikke noget
+    // brugeren ændrer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadTenderByPublicationNumber = async (publicationNumber) => {
     setStatus("loading");
     setMessage(null);
@@ -154,7 +211,11 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
       if (primaryCpv) {
         setMarketLoading(true);
         try {
-          const players = await getMarketPlayers(primaryCpv, { buyerName: data.buyerName, top: 6 });
+          const players = await getMarketPlayers(primaryCpv, {
+            buyerName: data.buyerName,
+            top: 6,
+            mustInclude: OWN_COMPANY_NAME
+          });
           setMarket(players);
 
           // Finansielle nøgletal er dyrere at hente (ét kald pr. konkurrent) —
@@ -183,63 +244,51 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     }
   };
 
-  const loadTender = () => {
+  // "Hent udbud" med et rigtigt notice-nummer/link går direkte. Uden et
+  // genkendeligt nummer falder den i stedet tilbage på samme fritekstsøgning
+  // som forslagsboksen — så et tryk på Enter uden at have klikket et forslag
+  // stadig giver "det der minder mest om" i stedet for bare en fejl.
+  const loadTender = async () => {
     const publicationNumber = extractPublicationNumber(noticeInput);
-    if (!publicationNumber) {
-      setStatus("error");
-      setMessage('Kunne ikke genkende et notice-nummer i det du indsatte. Prøv formen "558609-2026", eller indsæt selve TED-linket.');
+    setNoticeSuggestionsOpen(false);
+    setFallbackResults([]);
+
+    if (publicationNumber) {
+      loadTenderByPublicationNumber(publicationNumber);
       return;
     }
-    setNoticeSuggestionsOpen(false);
-    loadTenderByPublicationNumber(publicationNumber);
+
+    setStatus("loading");
+    setMessage(null);
+    try {
+      const results = await searchActiveNotices(noticeInput, { limit: 8 });
+      if (results.length === 1) {
+        // Ét entydigt træf — spring mellemstationen over, samme som
+        // CompanyLookupPage gør ved ét CVR-træf.
+        loadTenderByPublicationNumber(results[0].publicationNumber);
+        return;
+      }
+      if (results.length > 1) {
+        setFallbackResults(results);
+        setStatus("no_direct_match");
+        return;
+      }
+      setStatus("error");
+      setMessage(
+        `Ingen udbud fundet der matcher "${noticeInput.trim()}". Prøv færre eller andre ord, et notice-nummer, eller indsæt selve TED-linket.`
+      );
+    } catch (err) {
+      setStatus("error");
+      setMessage(err.message || "Søgningen fejlede.");
+    }
   };
 
   const pickNoticeSuggestion = (notice) => {
     setNoticeInput(notice.publicationNumber);
     setNoticeSuggestionsOpen(false);
     setNoticeSuggestions([]);
+    setFallbackResults([]);
     loadTenderByPublicationNumber(notice.publicationNumber);
-  };
-
-  const loadOwnCompany = async (cvr) => {
-    setOwnStatus("loading");
-    setOwnCandidates([]);
-
-    const result = await hentVirksomhed(cvr);
-    if (result.status !== "ok") {
-      setOwnStatus(result.status === "not_found" ? "not_found" : "error");
-      return;
-    }
-
-    setOwnCompany(result.company);
-    setOwnStatus("found");
-
-    const [financials, contracts, benchmark] = await Promise.all([
-      findLatestRegnskab(cvr),
-      searchWonContractsByCompany(result.company.name),
-      getIndustryBenchmark(result.company.industryCode).catch(() => null)
-    ]);
-    setOwnFinancials(financials);
-    setOwnContracts(contracts);
-    setOwnBenchmark(benchmark);
-  };
-
-  const runOwnSearch = async () => {
-    const trimmed = ownQuery.trim();
-    if (!trimmed) return;
-
-    setOwnStatus("loading");
-    const result = await søgVirksomheder(trimmed);
-
-    if (result.status === "cvr") return loadOwnCompany(result.cvr);
-    if (result.status !== "ok") {
-      setOwnStatus(result.status);
-      return;
-    }
-    if (result.traf.length === 1) return loadOwnCompany(result.traf[0].cvr);
-
-    setOwnCandidates(result.traf);
-    setOwnStatus("candidates");
   };
 
   const ownCompanyFiscalYear = ownFinancials?.status === "ok" ? ownFinancials.fiscalYearEnd?.slice(0, 4) : null;
@@ -258,7 +307,8 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
             <h3>Tilbudsgiver-radar</h3>
             <p className="muted">
               Peg på et konkret, aktivt TED-udbud og få egnethedskravene samlet ét sted, samt hvilke
-              virksomheder der historisk vinder i det marked — og hvordan I selv står i forhold til dem.
+              virksomheder der historisk vinder i det marked — og hvordan {OWN_COMPANY_NAME} står i
+              forhold til dem.
             </p>
           </div>
         </div>
@@ -331,6 +381,40 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
           </span>
           <h4>Kunne ikke hente udbuddet</h4>
           <p className="muted">{message}</p>
+        </section>
+      )}
+
+      {status === "no_direct_match" && (
+        <section className="card">
+          <div className="section-header">
+            <div>
+              <h3>Intet direkte match</h3>
+              <p className="muted small">
+                Ingen entydigt træf på "{noticeInput.trim()}" — her er de udbud der minder mest om det.
+              </p>
+            </div>
+          </div>
+
+          <div className="stack">
+            {fallbackResults.map((notice) => (
+              <div className="subcard" key={notice.publicationNumber}>
+                <div className="space-between mobile-stack">
+                  <div>
+                    <strong>{notice.title || "Udbud uden titel"}</strong>
+                    <p className="muted small">
+                      {notice.buyerName || "Ukendt ordregiver"} · {formatDate(notice.date)}
+                    </p>
+                  </div>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => pickNoticeSuggestion(notice)}
+                  >
+                    Vælg →
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -462,42 +546,48 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {market.map((player) => (
-                      <tr key={player.name}>
-                        <td>
-                          {onGoToCompany ? (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => onGoToCompany(player.name)}
-                            >
-                              <Icon name="search" size={12} />
-                              {player.name}
-                            </button>
-                          ) : (
-                            player.name
-                          )}
-                        </td>
-                        <td className="mono">{player.winCount}</td>
-                        <td>
-                          {player.singleContractValueDkk > 0
-                            ? formatDkkMio(player.singleContractValueDkk)
-                            : "–"}
-                        </td>
-                        <td>
-                          {player.financials?.status === "ok"
-                            ? formatDkkMio(player.financials.topline)
-                            : player.cvr
-                              ? "Ikke tilgængeligt"
-                              : "CVR ikke fundet"}
-                        </td>
-                        <td>
-                          {player.financials?.status === "ok"
-                            ? formatPercent(player.financials.solvencyPct)
-                            : "–"}
-                        </td>
-                      </tr>
-                    ))}
+                    {/* Devoteam-rækken lægges altid øverst — det er den man
+                        først vil orientere sig ud fra, uanset hvor den ville
+                        være placeret i en ren vindere-rangering. */}
+                    {[...market]
+                      .sort((a, b) => (b.isMustInclude ? 1 : 0) - (a.isMustInclude ? 1 : 0))
+                      .map((player) => (
+                        <tr key={player.name} className={player.isMustInclude ? "row-own" : undefined}>
+                          <td>
+                            {player.isMustInclude && <span className="pill pill-ok">Jer</span>}{" "}
+                            {onGoToCompany ? (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => onGoToCompany(player.name)}
+                              >
+                                <Icon name="search" size={12} />
+                                {player.name}
+                              </button>
+                            ) : (
+                              player.name
+                            )}
+                          </td>
+                          <td className="mono">{player.winCount}</td>
+                          <td>
+                            {player.singleContractValueDkk > 0
+                              ? formatDkkMio(player.singleContractValueDkk)
+                              : "–"}
+                          </td>
+                          <td>
+                            {player.financials?.status === "ok"
+                              ? formatDkkMio(player.financials.topline)
+                              : player.cvr
+                                ? "Ikke tilgængeligt"
+                                : "CVR ikke fundet"}
+                          </td>
+                          <td>
+                            {player.financials?.status === "ok"
+                              ? formatPercent(player.financials.solvencyPct)
+                              : "–"}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -518,56 +608,21 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
       <section className="card">
         <div className="section-header">
           <div>
-            <h3>Jeres profil</h3>
+            <h3>Jeres profil — {OWN_COMPANY_NAME}</h3>
             <p className="muted small">
-              Slå jeres eget selskab op for at holde jeres tal op mod konkurrentfeltet ovenfor.
+              Indlæses automatisk og er altid med i konkurrentfeltet ovenfor, markeret "Jer".
             </p>
           </div>
         </div>
 
-        <div className="filters-grid">
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="own-query">Firmanavn eller CVR-nummer</label>
-            <input
-              id="own-query"
-              className="input"
-              placeholder="Jeres eget firmanavn eller CVR-nummer"
-              value={ownQuery}
-              onChange={(e) => setOwnQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runOwnSearch()}
-            />
-          </div>
-          <div className="button-row align-end">
-            <button
-              className="btn btn-primary"
-              onClick={runOwnSearch}
-              disabled={ownStatus === "loading" || !ownQuery.trim()}
-            >
-              {ownStatus === "loading" ? <Working>Slår op…</Working> : "Slå op"}
-            </button>
-          </div>
-        </div>
-
-        {ownStatus === "candidates" && (
-          <div className="stack inner-gap">
-            {ownCandidates.map((kandidat) => (
-              <div className="subcard" key={kandidat.cvr}>
-                <div className="space-between mobile-stack">
-                  <div>
-                    <strong>{kandidat.navn}</strong>
-                    <p className="muted small">CVR {kandidat.cvr}</p>
-                  </div>
-                  <button className="btn btn-secondary btn-sm" onClick={() => loadOwnCompany(kandidat.cvr)}>
-                    Vælg →
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+        {ownStatus === "loading" && (
+          <p className="muted small">
+            <Working>Slår {OWN_COMPANY_NAME} op…</Working>
+          </p>
         )}
 
         {(ownStatus === "not_found" || ownStatus === "error") && (
-          <p className="muted small inner-gap">Kunne ikke finde selskabet.</p>
+          <p className="muted small">Kunne ikke finde {OWN_COMPANY_NAME} i CVR-navneindekset.</p>
         )}
 
         {ownStatus === "found" && ownCompany && (

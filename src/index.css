@@ -1143,6 +1143,15 @@ hr {
   background: var(--surface-2);
 }
 
+/* Fremhæver "os selv" i en sammenligningstabel (Tilbudsgiver-radaren) —
+   bevidst en NEUTRAL flade, ikke en af de tre signalfarver (grøn/gul/rød),
+   som er reserveret til live/demo/kræver-afklaring. At være "os" er ikke et
+   tillidsniveau. */
+.data-table .row-own td {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
 /* ==========================================================================
    Formularer og knapper
    ========================================================================== */

@@ -259,15 +259,23 @@ export async function searchByCPV(cpvCode, options = {}) {
  * rammeaftale, er det tedNoticeService.getNoticeDetail() på den specifikke
  * notice.
  *
+ * `mustInclude`, hvis angivet, GARANTERER at netop dette firmanavn er med i
+ * det returnerede felt, selv hvis det ikke er blandt de `top` mest
+ * vindende — inkl. med winCount:0 hvis firmaet aldrig har vundet noget i
+ * dette CPV-felt. Det er lige så vigtigt et signal som en placering: "I har
+ * aldrig vundet her" er reel, brugbar information, ikke en fejl at skjule.
+ * Bruges til altid at kunne vise "os" i konkurrentfeltet i
+ * Tilbudsgiver-radaren, uanset hvor stærk eller svag ens egen historik er.
+ *
  * @param {string} cpvCode
- * @param {{ buyerName?: string, sampleSize?: number, top?: number }} [options]
- * @returns {Promise<Array<{ name: string, winCount: number, singleContractValueDkk: number, notices: object[] }>>}
+ * @param {{ buyerName?: string, sampleSize?: number, top?: number, mustInclude?: string }} [options]
+ * @returns {Promise<Array<{ name: string, winCount: number, singleContractValueDkk: number, notices: object[], isMustInclude?: true }>>}
  */
 export async function getMarketPlayers(cpvCode, options = {}) {
   const code = cpvCode?.split("-")[0]?.trim();
   if (!code) return [];
 
-  const { buyerName, sampleSize = 50, top = 6 } = options;
+  const { buyerName, sampleSize = 50, top = 6, mustInclude } = options;
 
   let query = `classification-cpv=${code} AND notice-type=can-standard`;
   if (buyerName?.trim()) {
@@ -299,9 +307,45 @@ export async function getMarketPlayers(cpvCode, options = {}) {
     }
   }
 
-  return Array.from(byName.values())
-    .sort((a, b) => b.winCount - a.winCount || b.singleContractValueDkk - a.singleContractValueDkk)
-    .slice(0, top);
+  const ranked = Array.from(byName.values()).sort(
+    (a, b) => b.winCount - a.winCount || b.singleContractValueDkk - a.singleContractValueDkk
+  );
+  const result = ranked.slice(0, top);
+
+  if (mustInclude?.trim()) {
+    const needle = normalizeForMatch(mustInclude);
+    const alreadyIn = result.some((p) => normalizeForMatch(p.name) === needle);
+    if (!alreadyIn) {
+      const fullMatch = ranked.find((p) => normalizeForMatch(p.name) === needle);
+      result.push(
+        fullMatch
+          ? { ...fullMatch, isMustInclude: true }
+          : { name: mustInclude, winCount: 0, singleContractValueDkk: 0, notices: [], isMustInclude: true }
+      );
+    } else {
+      const match = result.find((p) => normalizeForMatch(p.name) === needle);
+      if (match) match.isMustInclude = true;
+    }
+  }
+
+  return result;
+}
+
+// TED's felter matcher kun HELE tokens, aldrig et præfiks eller en delstreng
+// — MEN understøtter et efterstillet wildcard-tegn ("konsulent*"),
+// verificeret ved direkte research. Det er afgørende for dansk fritekst:
+// danske sammensatte ord skrives i ét ord uden mellemrum
+// ("konsulentydelser", "IT-konsulentbistand"), så et helt-ord-match på
+// "konsulent" alene rammer reelt ALDRIG noget (0 træf, testet), mens
+// "konsulent*" rammer 428 relevante notices. Wildcard løser samtidig det
+// oprindelige præfiks-problem ("Ørst*" matcher nu også "Ørsted" undervejs i
+// indtastningen) — se WORD_RE nedenfor.
+function wildcardWord(word) {
+  // Kun bogstaver/tal/bindestreg bevares — TED's forespørgselssprog bruger
+  // reserverede tegn (", (, ), *) som brugeren ellers kunne indtaste ved et
+  // uheld og derved ødelægge forespørgslen.
+  const cleaned = word.replace(/[^\p{L}\p{N}-]/gu, "");
+  return cleaned ? `${cleaned}*` : null;
 }
 
 /**
@@ -309,21 +353,12 @@ export async function getMarketPlayers(cpvCode, options = {}) {
  * til at finde et konkret udbud i Tilbudsgiver-radaren uden at kende
  * notice-nummeret i forvejen.
  *
- * VIGTIG BEGRÆNSNING, verificeret ved direkte research mod TED's API: felterne
- * matcher kun HELE ord, aldrig et præfiks — "Ørst" giver nul træf, kun det
- * fulde "Ørsted" gør. Det er derfor IKKE muligt at bygge en forslagsboks der
- * opdateres levende for hvert tastetryk, sådan som firmanavne-søgningen i
- * CompanyLookupPage kan (den har et rigtigt trigram-indeks bag sig, TED har
- * ikke). Kaldende kode debouncer i stedet det AKTUELLE input som en hel
- * frase — TED returnerer simpelthen intet, ikke forkert data, mens sidste
- * ord stadig er ved at blive skrevet.
- *
- * Frase-match (anførselstegn) er bevidst valgt frem for løse ord: et
- * flerords-AND på samme felt gav ved direkte test uforudsigelige resultater
- * (204 træf mod frasens 195 — matchede tilsyneladende på tværs af separate
- * sprogvarianter i stedet for at kræve begge ord i samme). Fraser er den
- * pålidelige form, samme lære som escapeQueryPhrase() bruges til andre
- * steder i denne fil.
+ * Hvert ord i søgeteksten wildcard-udvides og skal matche ENTEN titel eller
+ * ordregiver (ordene kan ramme forskellige felter — "Ørsted konsulent"
+ * finder udbud hvor "Ørsted" er ordregiveren og "konsulent" står i titlen).
+ * ALLE ord skal matche ét eller andet sted, men hvert ord for sig kan matche
+ * enten felt — verificeret direkte: en tilsvarende forespørgsel på "Ørsted"
+ * + "rørled" gav præcis de 2 reelle Ørsted-rørlednings-udbud, intet andet.
  *
  * Afgrænset til danske ordregivere (buyer-country=DNK) — appens formål er
  * danske udbud, og uden afgrænsningen bliver EU-indekset for støjende til en
@@ -335,14 +370,21 @@ export async function getMarketPlayers(cpvCode, options = {}) {
  * @returns {Promise<Array<{ publicationNumber: string, title: string|null, buyerName: string, date: string|null }>>}
  */
 export async function searchActiveNotices(text, options = {}) {
-  const phrase = text.trim();
-  if (phrase.length < 2) return [];
-
   const { limit = 8 } = options;
-  const escaped = escapeQueryPhrase(phrase);
-  const query =
-    `(notice-title="${escaped}" OR buyer-name="${escaped}") ` +
-    "AND notice-type=cn-standard AND buyer-country=DNK SORT BY publication-date DESC";
+
+  // Maks. 6 ord — dels for ikke at bygge en absurd lang forespørgsel af en
+  // hel sætning indsat ved et uheld, dels fordi flere ord end det sjældent
+  // giver mere præcision i en titel/ordregiver-søgning.
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .slice(0, 6)
+    .map(wildcardWord)
+    .filter(Boolean);
+  if (words.length === 0) return [];
+
+  const clauses = words.map((w) => `(notice-title=${w} OR buyer-name=${w})`).join(" AND ");
+  const query = `${clauses} AND notice-type=cn-standard AND buyer-country=DNK SORT BY publication-date DESC`;
 
   const data = await postSearch(query, { page: 1, limit });
 
