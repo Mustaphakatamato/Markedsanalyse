@@ -21,7 +21,7 @@ produktion. Selve datakilderne kræver hverken nøgler eller login.
 
 ## Status
 
-Fungerende MVP med to flows og fire live datakilder. Backend'en består af fire
+Fungerende MVP med to flows og fem live datakilder. Backend'en består af seks
 Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
 gemmes stadig i browserens `localStorage`.
 
@@ -35,7 +35,8 @@ gemmes stadig i browserens `localStorage`.
   til tabel
 - Vundne EU-udbud fra TED med værdi, ordregiver og link til den enkelte notice
 - Risikoprofil: soliditet og overskudsgrad holdt op mod branchegennemsnittet
-- ESG & compliance — **demo-data**, se nedenfor
+- ESG & compliance: rigtigt EU-sanktionstjek, plus CSR/klima/whistleblower som
+  **demo-data**, se nedenfor
 
 **Udbud & markedsanalyse** ([`pages/TenderPage.jsx`](src/pages/TenderPage.jsx))
 — opret et udbud (titel, CPV-kode, deadline, anslået værdi) og få:
@@ -56,6 +57,7 @@ virksomhedsopslaget for den pågældende virksomhed ([`App.jsx`](src/App.jsx)).
 | **Erhvervsstyrelsen** (virk.dk, XBRL) | Regnskabstal pr. regnskabsår | [`regnskabService.js`](src/services/regnskabService.js) |
 | **TED** (Tenders Electronic Daily, v3) | EU-udbud og kontrakttildelinger | [`tedService.js`](src/services/tedService.js) |
 | **Danmarks Statistik** (tabel REGN50A) | Branchegennemsnit for nøgletal | [`industryBenchmarkService.js`](src/services/industryBenchmarkService.js) |
+| **EU's konsoliderede sanktionsliste** (Financial Sanctions Files) | EU-sanktionstjek på virksomhedsnavn | [`sanctionsService.js`](src/services/sanctionsService.js) |
 
 Hver kilde har sine egne begrænsninger — de er dokumenteret i toppen af den
 enkelte servicefil. De vigtigste:
@@ -78,6 +80,12 @@ enkelte servicefil. De vigtigste:
 - **Danmarks Statistik dækker kun private byerhverv** — landbrug, finans og
   offentlige brancher mangler (se [`naceSectionMap.js`](src/data/naceSectionMap.js)).
   Tallene er 1-2 år efterslæbte.
+- **Sanktionstjekket bruger kun eksakt navnematch**, bevidst — ingen
+  fuzzy/trigram-søgning, fordi et falsk positivt er værre end et overset match
+  i en due diligence-kontekst. Stavevarianter og translitterationer kan derfor
+  undslippe. Korte enkeltords-match (fx et fornavn der også er alias for en
+  udpeget person) flager som "kræver verifikation", ikke som et sikkert match
+  — se konfidens-logikken i [`supabase/functions/sanktionstjek/index.ts`](supabase/functions/sanktionstjek/index.ts).
 
 ### Demo-data
 
@@ -85,7 +93,7 @@ Tre ting er hardcodet og markeret som demo-data i UI'et:
 
 | Hvad | Fil |
 |---|---|
-| ESG-rapportering og EU-sanktionstjek (deterministisk pr. CVR; sanktionstjek svarer altid "intet match") | [`esgService.js`](src/services/esgService.js) |
+| ESG-rapportering — CSR-rapport, klimarapportering, whistleblowerordning (deterministisk pr. CVR) | [`esgService.js`](src/services/esgService.js) |
 | Kandidat-leverandører — 4 virksomheder med relevans-score | [`data/suppliers.js`](src/data/suppliers.js) |
 | Markedsnøgletal pr. CPV-kode — 4 koder med trend, kontraktstørrelse, modenhed | [`data/cpvOptions.js`](src/data/cpvOptions.js) |
 
@@ -101,11 +109,12 @@ src/
   components/  layout/TopNav, charts/TrendChart (håndtegnet SVG, ingen chart-lib)
   pages/       CompanyLookupPage, TenderPage
 scripts/
-  indlaes-cvr-navne.mjs   Ugentlig indlæsning af navneindekset
+  indlaes-cvr-navne.mjs      Ugentlig indlæsning af navneindekset
+  indlaes-eu-sanktioner.mjs  Ugentlig indlæsning af sanktionslisten
 supabase/
-  functions/   cvr-soeg, cvr-datafordeler, ted,
-               regnskab-search, regnskab-doc + _shared/
-  migrations/  Cache-tabeller og navneindeks
+  functions/   cvr-soeg, cvr-datafordeler, ted, regnskab-search,
+               regnskab-doc, sanktionstjek + _shared/
+  migrations/  Cache-tabeller, navneindeks og sanktionsliste
 ```
 
 Appen har ingen router og ingen UI-afhængigheder — kun React og Vite. Navigation
@@ -113,10 +122,11 @@ mellem de to views er `useState` i `App.jsx`.
 
 ### Backend
 
-Fire Edge Functions står mellem browseren og datakilderne. De findes fordi
+Seks Edge Functions står mellem browseren og datakilderne. De findes fordi
 kilderne ikke kan kaldes direkte: TED sender ingen CORS-headers, cvrapi.dk
 kræver en `User-Agent` browsere ikke må sætte, og Erhvervsstyrelsens data
-findes kun over `http://`.
+findes kun over `http://`. `sanktionstjek` slår i stedet op i vores eget
+indeks af sanktionslisten — se afsnittet nedenfor.
 
 De kaldes **ad samme vej i udvikling og produktion**. Det er bevidst: før lå
 de samme fire proxier i `vite.config.js`, hvor de kun fandtes i `dev` og
@@ -156,15 +166,34 @@ XBRL-parsingen bliver i browseren med vilje: Edge Functions har kun 2s CPU-tid
 pr. request, hvilket ikke rækker til et større regnskabsdokument. Proxying er
 async I/O og tæller ikke med.
 
+### Sanktionslisten
+
+Samme mønster som navneindekset: EU's konsoliderede sanktionsliste (Financial
+Sanctions Files, ~6.200 enheder / ~31.000 navnevarianter) hentes som XML og
+indlæses i `eu_sanktionsliste`, så `sanktionstjek`-funktionen kan slå op uden
+at kalde EU hver gang. Indlæses med
+[`scripts/indlaes-eu-sanktioner.mjs`](scripts/indlaes-eu-sanktioner.mjs):
+
+```bash
+node scripts/indlaes-eu-sanktioner.mjs
+```
+
+EU opdaterer listen flere gange om ugen ved aktive sager — en ugentlig kørsel,
+samme kadence som CVR-navneindekset, er passende. Kilde-URL'en bruger et fast,
+offentligt kendt token (samme som open source-projektet moov-io/watchman) i
+stedet for en personlig EU Login-konto — se kommentaren øverst i scriptet,
+hvis den nogensinde lukkes ned.
+
 ## Kendte begrænsninger
 
 1. **Ingen brugerkonti.** Udbud ligger stadig i `localStorage` og findes kun i
    den enkelte browser. Der er hverken login, deling eller RLS på brugerdata.
-2. **Fabrikeret compliance-data.** ESG-boksen og EU-sanktionstjekket i
-   [`esgService.js`](src/services/esgService.js) er genereret ud fra
-   CVR-nummeret. Sanktionstjekket svarer altid "intet match". Det er markeret
-   som demo-data i UI'et, men i et værktøj der skal dokumentere en
-   udbudsjournal er det den farligste del af appen.
+2. **Fabrikeret ESG-data.** CSR-rapport, klimarapportering og
+   whistleblowerordning i [`esgService.js`](src/services/esgService.js) er
+   genereret ud fra CVR-nummeret og markeret som demo-data i UI'et.
+   EU-sanktionstjekket er derimod rigtig data siden 2026-08-10 (se
+   [`sanctionsService.js`](src/services/sanctionsService.js)), men kun med
+   eksakt navnematch — se caveat under Datakilder ovenfor.
 3. **TED dækker kun over EU's tærskelværdi.** De fleste danske kontrakter
    ligger under og findes slet ikke i appen.
 4. **Navnematch mod TED har en grænse.** Der er ingen CVR/VAT på vinderen i de
@@ -173,10 +202,10 @@ async I/O og tæller ikke med.
 
 ## Næste skridt
 
-1. **Rigtigt sanktionstjek** mod EU's konsoliderede liste — gratis og officiel.
-   Fjerner den fabrikerede data, og er det enkeltløft der betyder mest.
-2. **Nationale udbudsdata** (Udbud.dk) — dækker de kontrakter TED ikke gør.
-3. **Auth og udbud i Postgres**, så en markedsundersøgelse kan deles i en
+1. **Nationale udbudsdata** (Udbud.dk) — dækker de kontrakter TED ikke gør.
+   Teknisk API-bruger er oprettet og login virker; afventer rolletildeling
+   (`MU_API_DATASYNK`) fra Erhvervsstyrelsen før data kan hentes.
+2. **Auth og udbud i Postgres**, så en markedsundersøgelse kan deles i en
    organisation.
-4. **Automatisér indlæsningen** af navneindekset, så det ikke skal køres i
-   hånden hver uge.
+3. **Automatisér indlæsningen** af navneindekset og sanktionslisten, så de
+   ikke skal køres i hånden hver uge.
