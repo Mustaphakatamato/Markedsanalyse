@@ -21,6 +21,7 @@ const RESULT_FIELDS = [
   "publication-number",
   "publication-date",
   "notice-type",
+  "notice-title",
   "winner-name",
   "buyer-name",
   "total-value",
@@ -38,6 +39,21 @@ function firstText(field) {
   // { "dan": ["Some Name"], "eng": ["Some Name"] }
   const values = Object.values(field)[0];
   return Array.isArray(values) ? values.join(", ") : String(values ?? "");
+}
+
+// notice-title er, i modsætning til winner-name/buyer-name, EN STRENG pr.
+// sprog, ikke et array — og selve strengen er skabelon-genereret: "Land –
+// CPV-kategori (oversat) – Det faktiske projektnavn". Vi vil kun vise den
+// sidste, substantielle del; resten er boilerplate der går igen på tværs af
+// tusindvis af urelaterede notices (verificeret: frasesøgning på selve
+// CPV-kategoriteksten alene gav 204 helt urelaterede træf).
+function friendlyTitle(field) {
+  if (!field) return null;
+  const raw = field.dan ?? Object.values(field)[0];
+  const text = Array.isArray(raw) ? raw[0] : raw;
+  if (!text) return null;
+  const parts = text.split(" – ");
+  return parts.length > 1 ? parts[parts.length - 1] : text;
 }
 
 // Til verifikation skal vi se på ALLE sprogvarianter, ikke kun den første —
@@ -129,6 +145,7 @@ function normalizeNotice(notice) {
     publicationNumber: notice["publication-number"] || null,
     date: notice["publication-date"] || null,
     noticeType: notice["notice-type"] || null,
+    title: friendlyTitle(notice["notice-title"]),
     winnerName: firstText(notice["winner-name"]),
     winnerNames: winnerNamesList(notice["winner-name"]),
     winnerCount,
@@ -285,4 +302,51 @@ export async function getMarketPlayers(cpvCode, options = {}) {
   return Array.from(byName.values())
     .sort((a, b) => b.winCount - a.winCount || b.singleContractValueDkk - a.singleContractValueDkk)
     .slice(0, top);
+}
+
+/**
+ * Søg efter AKTIVE danske udbudsbekendtgørelser på titel eller ordregiver —
+ * til at finde et konkret udbud i Tilbudsgiver-radaren uden at kende
+ * notice-nummeret i forvejen.
+ *
+ * VIGTIG BEGRÆNSNING, verificeret ved direkte research mod TED's API: felterne
+ * matcher kun HELE ord, aldrig et præfiks — "Ørst" giver nul træf, kun det
+ * fulde "Ørsted" gør. Det er derfor IKKE muligt at bygge en forslagsboks der
+ * opdateres levende for hvert tastetryk, sådan som firmanavne-søgningen i
+ * CompanyLookupPage kan (den har et rigtigt trigram-indeks bag sig, TED har
+ * ikke). Kaldende kode debouncer i stedet det AKTUELLE input som en hel
+ * frase — TED returnerer simpelthen intet, ikke forkert data, mens sidste
+ * ord stadig er ved at blive skrevet.
+ *
+ * Frase-match (anførselstegn) er bevidst valgt frem for løse ord: et
+ * flerords-AND på samme felt gav ved direkte test uforudsigelige resultater
+ * (204 træf mod frasens 195 — matchede tilsyneladende på tværs af separate
+ * sprogvarianter i stedet for at kræve begge ord i samme). Fraser er den
+ * pålidelige form, samme lære som escapeQueryPhrase() bruges til andre
+ * steder i denne fil.
+ *
+ * Afgrænset til danske ordregivere (buyer-country=DNK) — appens formål er
+ * danske udbud, og uden afgrænsningen bliver EU-indekset for støjende til en
+ * forslagsliste. En dansk virksomhed under et udenlandsk moderselskab vil
+ * derfor kunne mangle her.
+ *
+ * @param {string} text
+ * @param {{ limit?: number }} [options]
+ * @returns {Promise<Array<{ publicationNumber: string, title: string|null, buyerName: string, date: string|null }>>}
+ */
+export async function searchActiveNotices(text, options = {}) {
+  const phrase = text.trim();
+  if (phrase.length < 2) return [];
+
+  const { limit = 8 } = options;
+  const escaped = escapeQueryPhrase(phrase);
+  const query =
+    `(notice-title="${escaped}" OR buyer-name="${escaped}") ` +
+    "AND notice-type=cn-standard AND buyer-country=DNK SORT BY publication-date DESC";
+
+  const data = await postSearch(query, { page: 1, limit });
+
+  return (data.notices || [])
+    .map(normalizeNotice)
+    .filter((n) => n.publicationNumber);
 }

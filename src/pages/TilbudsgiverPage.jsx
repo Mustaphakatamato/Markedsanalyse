@@ -17,16 +17,22 @@
 // rå, ved siden af virksomhedens egne tal, og forsøger ALDRIG at give et
 // automatisk "opfylder/opfylder ikke"-svar.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { hentVirksomhed, søgVirksomheder } from "../services/cvrService";
 import { getTenderRequirements } from "../services/tedNoticeService";
-import { getMarketPlayers, searchWonContractsByCompany, coreCompanyName, normalizeForMatch } from "../services/tedService";
+import {
+  getMarketPlayers,
+  searchActiveNotices,
+  searchWonContractsByCompany,
+  coreCompanyName,
+  normalizeForMatch
+} from "../services/tedService";
 import { findLatestRegnskab } from "../services/regnskabService";
 import { getIndustryBenchmark, pickClosestBenchmarkYear } from "../services/industryBenchmarkService";
 import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
-import { Working, SkeletonRows, OpChip } from "../components/ui/Loading";
-import { formatDkkMio, formatPercent } from "../lib/format";
+import { Working, SkeletonRows } from "../components/ui/Loading";
+import { formatDkkMio, formatPercent, formatDate } from "../lib/format";
 
 // Genkender både en rå notice-nummer-form ("558609-2026") og et hvilket som
 // helst TED-link der indeholder den samme streng et sted i URL'en — ingen
@@ -81,14 +87,53 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
   const [ownBenchmark, setOwnBenchmark] = useState(null);
   const [ownContracts, setOwnContracts] = useState(null);
 
-  const loadTender = async () => {
-    const publicationNumber = extractPublicationNumber(noticeInput);
-    if (!publicationNumber) {
-      setStatus("error");
-      setMessage('Kunne ikke genkende et notice-nummer i det du indsatte. Prøv formen "558609-2026", eller indsæt selve TED-linket.');
+  // Live forslag på titel/ordregiver mens man skriver — se
+  // searchActiveNotices() i tedService.js for hvorfor det IKKE kan opdatere
+  // sig pr. tastetryk sådan som firmanavne-forslagene i CompanyLookupPage
+  // gør (TED matcher kun hele ord). Debounces i stedet det aktuelle input
+  // som en hel frase; boksen viser simpelthen intet før et helt ord er
+  // skrevet færdigt.
+  const [noticeSuggestions, setNoticeSuggestions] = useState([]);
+  const [noticeSuggestionsOpen, setNoticeSuggestionsOpen] = useState(false);
+  const noticeBoxRef = useRef(null);
+  const noticeSuggestionRequestRef = useRef(0);
+
+  useEffect(() => {
+    const trimmed = noticeInput.trim();
+    // Indeholder input allerede et genkendeligt notice-nummer (rå tal eller
+    // inde i et indsat TED-link), er der intet at foreslå — brugeren har
+    // allerede det de skal bruge, og en fritekstsøgning på selve URL'en
+    // ville alligevel ikke give nogen træf.
+    if (trimmed.length < 2 || extractPublicationNumber(trimmed)) {
+      setNoticeSuggestions([]);
       return;
     }
 
+    const timer = setTimeout(async () => {
+      const requestId = ++noticeSuggestionRequestRef.current;
+      try {
+        const results = await searchActiveNotices(trimmed);
+        if (requestId !== noticeSuggestionRequestRef.current) return; // forældet svar
+        setNoticeSuggestions(results);
+      } catch {
+        if (requestId === noticeSuggestionRequestRef.current) setNoticeSuggestions([]);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [noticeInput]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (noticeBoxRef.current && !noticeBoxRef.current.contains(e.target)) {
+        setNoticeSuggestionsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const loadTenderByPublicationNumber = async (publicationNumber) => {
     setStatus("loading");
     setMessage(null);
     setRequirements(null);
@@ -136,6 +181,24 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
       setStatus("error");
       setMessage(err.message || "Kunne ikke hente udbuddet.");
     }
+  };
+
+  const loadTender = () => {
+    const publicationNumber = extractPublicationNumber(noticeInput);
+    if (!publicationNumber) {
+      setStatus("error");
+      setMessage('Kunne ikke genkende et notice-nummer i det du indsatte. Prøv formen "558609-2026", eller indsæt selve TED-linket.');
+      return;
+    }
+    setNoticeSuggestionsOpen(false);
+    loadTenderByPublicationNumber(publicationNumber);
+  };
+
+  const pickNoticeSuggestion = (notice) => {
+    setNoticeInput(notice.publicationNumber);
+    setNoticeSuggestionsOpen(false);
+    setNoticeSuggestions([]);
+    loadTenderByPublicationNumber(notice.publicationNumber);
   };
 
   const loadOwnCompany = async (cvr) => {
@@ -201,16 +264,42 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
         </div>
 
         <div className="filters-grid">
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="notice-input">TED-link eller notice-nummer</label>
+          <div style={{ gridColumn: "1 / -1", position: "relative" }} ref={noticeBoxRef}>
+            <label htmlFor="notice-input">TED-link, notice-nummer, titel eller ordregiver</label>
             <input
               id="notice-input"
               className="input"
-              placeholder="Fx https://ted.europa.eu/en/notice/558609-2026 eller 558609-2026"
+              placeholder="Fx et TED-link, 558609-2026, et udbudsnavn eller ordregiverens navn"
               value={noticeInput}
-              onChange={(e) => setNoticeInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && loadTender()}
+              autoComplete="off"
+              onChange={(e) => {
+                setNoticeInput(e.target.value);
+                setNoticeSuggestionsOpen(true);
+              }}
+              onFocus={() => noticeSuggestions.length > 0 && setNoticeSuggestionsOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setNoticeSuggestionsOpen(false);
+                  loadTender();
+                } else if (e.key === "Escape") {
+                  setNoticeSuggestionsOpen(false);
+                }
+              }}
             />
+            {noticeSuggestionsOpen && noticeSuggestions.length > 0 && (
+              <ul className="suggestions-list">
+                {noticeSuggestions.map((notice) => (
+                  <li key={notice.publicationNumber}>
+                    <button type="button" onClick={() => pickNoticeSuggestion(notice)}>
+                      <span>{notice.title || "Udbud uden titel"}</span>
+                      <span className="muted small">
+                        {notice.buyerName || "Ukendt ordregiver"} · {formatDate(notice.date)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="button-row align-end">
             <button
