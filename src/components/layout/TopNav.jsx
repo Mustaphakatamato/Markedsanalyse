@@ -2,7 +2,8 @@ import ThemeToggle from "./ThemeToggle";
 
 const NAV_ITEMS = [
   { id: "company", label: "Virksomhedsopslag" },
-  { id: "tenders", label: "Udbud & markedsanalyse" }
+  { id: "tenders", label: "Udbud & markedsanalyse" },
+  { id: "bidder", label: "Tilbudsgiver-radar" }
 ];
 
 // Monogram i stedet for et logo vi ikke har: fire datapunkter og en linje —

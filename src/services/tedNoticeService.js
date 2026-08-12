@@ -60,14 +60,27 @@ function parseAmount(raw) {
   return Number.isFinite(num) ? num : null;
 }
 
-// Notice'ens overordnede titel/beskrivelse — den øverste cac:ProcurementProject,
-// ikke de lot-specifikke (dem har hver deres egen ProcurementProject inde i
-// cac:ProcurementProjectLot).
+// CPV-koderne på ét cac:ProcurementProject-element — delt mellem
+// notice'ens overordnede projekt og hvert lots eget (nedenunder), som hver
+// har deres egen klassifikation.
+function parseCpvCodes(proj) {
+  if (!proj) return [];
+  const classifications = [
+    firstChildByLocalName(proj, "MainCommodityClassification"),
+    ...childrenByLocalName(proj, "AdditionalCommodityClassification")
+  ].filter(Boolean);
+  return classifications.map((c) => text(firstChildByLocalName(c, "ItemClassificationCode"))).filter(Boolean);
+}
+
+// Notice'ens overordnede titel/beskrivelse/CPV — den øverste
+// cac:ProcurementProject, ikke de lot-specifikke (dem har hver deres egen
+// ProcurementProject inde i cac:ProcurementProjectLot).
 function parseTopLevel(doc) {
   const proj = firstChildByLocalName(doc.documentElement, "ProcurementProject");
   return {
     title: text(firstChildByLocalName(proj, "Name")),
-    description: text(firstChildByLocalName(proj, "Description"))
+    description: text(firstChildByLocalName(proj, "Description")),
+    cpvCodes: parseCpvCodes(proj)
   };
 }
 
@@ -78,20 +91,63 @@ function parseLots(doc) {
       const proj = firstChildByLocalName(lotEl, "ProcurementProject");
       if (!id || !proj) return null;
 
-      const classifications = [
-        firstChildByLocalName(proj, "MainCommodityClassification"),
-        ...childrenByLocalName(proj, "AdditionalCommodityClassification")
-      ].filter(Boolean);
-      const cpvCodes = classifications
-        .map((c) => text(firstChildByLocalName(c, "ItemClassificationCode")))
-        .filter(Boolean);
-
       return {
         id,
         title: text(firstChildByLocalName(proj, "Name")),
         description: text(firstChildByLocalName(proj, "Description")),
-        cpvCodes
+        cpvCodes: parseCpvCodes(proj)
       };
+    })
+    .filter(Boolean);
+}
+
+// Ordregiverens navn: cac:ContractingParty peger IKKE direkte på et navn,
+// kun på en efac:Organization-id via cac:Party > cac:PartyIdentification >
+// cbc:ID — samme indirektion som vinderne. Der kan i sjældne tilfælde være
+// flere ContractingParty-elementer (fælles udbud); vi tager den første der
+// rent faktisk matcher en kendt organisation.
+function parseBuyerName(doc, orgsById) {
+  for (const contractingParty of allByLocalName(doc, "ContractingParty")) {
+    const party = firstChildByLocalName(contractingParty, "Party");
+    const id = text(firstChildByLocalName(firstChildByLocalName(party, "PartyIdentification"), "ID"));
+    if (id && orgsById.has(id)) return orgsById.get(id);
+  }
+  return null;
+}
+
+// eForms' egen kodeliste for egnethedskrav (TendererRequirementTypeCode,
+// listName="selection-criterion") starter alle koder med et fast præfiks pr.
+// kategori — "slc-stand-*" er økonomisk/finansiel formåen, "slc-abil-*" er
+// teknisk/faglig formåen, "slc-suit-*" er retten til at udøve erhvervet
+// (autorisationer mv.). Verificeret på en rigtig, nylig dansk bekendtgørelse
+// (Ørsted, 558609-2026): "slc-stand-other" og "slc-abil-ref-work".
+//
+// VIGTIGT: selve kravet (fx et minimumsomsætningskrav i kroner) står IKKE i
+// et separat, struktureret talfelt — det ligger som fri tekst i
+// Description-feltet, ofte som en hel juridisk afsnit. Vi udtrækker og
+// kategoriserer derfor kravet, men forsøger BEVIDST IKKE at parse et konkret
+// tal ud og lave et automatisk "opfylder/opfylder ikke"-tjek — det ville
+// kunne give et falsk svar på et krav der reelt ikke står struktureret. Det
+// er nøjagtig den slags falske positiv denne app konsekvent undgår andre
+// steder (se sanktionstjekket). Kravteksten vises rå, sammen med
+// virksomhedens egne rigtige tal ved siden af, så mennesket vurderer.
+const CRITERION_CATEGORIES = [
+  { prefix: "slc-stand", label: "Økonomisk og finansiel formåen" },
+  { prefix: "slc-abil", label: "Teknisk og faglig formåen" },
+  { prefix: "slc-suit", label: "Egnethed til at udøve erhvervet" }
+];
+
+function categorizeCriterion(typeCode) {
+  return CRITERION_CATEGORIES.find((c) => typeCode?.startsWith(c.prefix))?.label || "Andet egnethedskrav";
+}
+
+function parseSelectionCriteria(doc) {
+  return allByLocalName(doc, "SelectionCriteria")
+    .map((el) => {
+      const typeCode = text(firstChildByLocalName(el, "TendererRequirementTypeCode"));
+      const description = text(firstChildByLocalName(el, "Description"));
+      if (!description) return null;
+      return { typeCode, category: categorizeCriterion(typeCode), description };
     })
     .filter(Boolean);
 }
@@ -241,4 +297,52 @@ export async function getNoticeDetail(notice, companyName) {
   const companyAwardsTotal = companyAwards.reduce((sum, a) => sum + (a.value || 0), 0);
 
   return { title: top.title, description: top.description, lots, companyAwards, companyAwardsTotal };
+}
+
+/**
+ * Hent og udtræk kravene i en AKTIV udbudsbekendtgørelse (ikke en
+ * tildeling) — bruges af tilbudsgiver-flowet til at vise ordregiver,
+ * CPV-koder, lots og egnethedskrav uden at skulle åbne selve
+ * bekendtgørelsen. Virker på samme `ted-notice`-proxy som getNoticeDetail(),
+ * der er en generisk XML-proxy uafhængig af notice-type.
+ *
+ * `criteria[].description` er ordregiverens EGEN tekst, ukommenteret — der
+ * findes ikke noget struktureret talfelt at læse et minimumskrav ud af (se
+ * kommentaren ved parseSelectionCriteria ovenfor), så denne funktion laver
+ * IKKE en vurdering af om en given virksomhed opfylder kravet. Det er op til
+ * UI'et at stille kravteksten op ved siden af virksomhedens egne tal.
+ *
+ * @param {string} publicationNumber
+ * @returns {Promise<{
+ *   title: string|null,
+ *   description: string|null,
+ *   buyerName: string|null,
+ *   cpvCodes: string[],
+ *   lots: Array<{ id: string, title: string|null, description: string|null, cpvCodes: string[] }>,
+ *   criteria: Array<{ typeCode: string|null, category: string, description: string }>
+ * } | null>}
+ */
+export async function getTenderRequirements(publicationNumber) {
+  if (!publicationNumber) return null;
+
+  const xmlText = await fetchNoticeXml(publicationNumber);
+  const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+  if (doc.querySelector("parsererror")) {
+    throw new Error("Kunne ikke fortolke TED-notice'ens XML.");
+  }
+
+  const top = parseTopLevel(doc);
+  const lots = parseLots(doc);
+  const orgsById = parseOrganizations(doc);
+  const buyerName = parseBuyerName(doc, orgsById);
+  const criteria = parseSelectionCriteria(doc);
+
+  return {
+    title: top.title,
+    description: top.description,
+    buyerName,
+    cpvCodes: top.cpvCodes,
+    lots,
+    criteria
+  };
 }

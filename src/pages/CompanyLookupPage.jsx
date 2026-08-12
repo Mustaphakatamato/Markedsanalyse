@@ -12,6 +12,7 @@ import SourceBadge from "../components/ui/SourceBadge";
 import StatusChip from "../components/ui/StatusChip";
 import ConfidenceMeter from "../components/ui/ConfidenceMeter";
 import { Working, SkeletonRows, OpChip } from "../components/ui/Loading";
+import { formatDkkMio, formatPercent, formatDate, formatDanishDate, formatAmount } from "../lib/format";
 
 // Rækkefølgen her er også rækkefølgen knapperne vises i under grafen.
 const METRIC_DEFS = [
@@ -22,29 +23,6 @@ const METRIC_DEFS = [
   { key: "solvencyPct", label: "Soliditetsgrad", isPercent: true }
 ];
 
-function formatDkkMio(value) {
-  if (value == null) return "–";
-  // For meget små selskaber (fx et lige-stiftet holdingselskab) kan et
-  // negativt beløb i hele kroner (fx -4.999 DKK) afrunde til 0,0 i
-  // mio.-visning — toLocaleString bevarer fortegnet på negativ nul og ville
-  // vise "-0 mio. DKK", hvilket ligner en fejl. Rund selv først og kollaps
-  // -0 til 0.
-  const rounded = Math.round((value / 1_000_000) * 10) / 10;
-  const normalized = rounded === 0 ? 0 : rounded;
-  return `${normalized.toLocaleString("da-DK", { maximumFractionDigits: 1 })} mio. DKK`;
-}
-
-// Procenter skal formateres som beløbene ovenfor — dansk decimalkomma. Uden
-// dette viser tallene sig som "24.3%" side om side med "5.290,5 mio. DKK".
-function formatPercent(value) {
-  if (value == null) return "–";
-  return `${value.toLocaleString("da-DK", { maximumFractionDigits: 1 })}%`;
-}
-
-function formatDate(isoDate) {
-  return isoDate ? isoDate.slice(0, 10) : "–";
-}
-
 // company.creditRemark kommer fra CVR_Kreditoplysninger (se
 // cvr-datafordeler/index.ts) — Erhvervsstyrelsens egen løbende registrering
 // af konkurs/tvangsopløsning/likvidation mv., med myndighedens egen ordlyd.
@@ -52,18 +30,6 @@ function formatDate(isoDate) {
 function formatCreditRemark(remark) {
   if (!remark) return null;
   return `${remark.type} — ${remark.stage} (siden ${formatDanishDate(remark.since)})`;
-}
-
-// Datafordeleren leverer datoer i ISO-format ("1991-01-09"). Vist råt stak de
-// ud fra resten af siden, der er gennemført dansk.
-function formatDanishDate(isoDate) {
-  if (!isoDate) return null;
-  const d = new Date(isoDate);
-  return Number.isNaN(d.getTime()) ? isoDate : d.toLocaleDateString("da-DK");
-}
-
-function formatAmount(value, currency) {
-  return value != null ? `${value.toLocaleString("da-DK")} ${currency || ""}`.trim() : "Ikke oplyst";
 }
 
 // Beløb, procenter og datoer sættes i tabularnumre, så kolonner flugter

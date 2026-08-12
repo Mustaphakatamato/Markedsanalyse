@@ -2,6 +2,7 @@ import { useState } from "react";
 import TopNav from "./components/layout/TopNav";
 import CompanyLookupPage from "./pages/CompanyLookupPage";
 import TenderPage from "./pages/TenderPage";
+import TilbudsgiverPage from "./pages/TilbudsgiverPage";
 
 export default function App() {
   const [activeView, setActiveView] = useState("company");
@@ -26,6 +27,7 @@ export default function App() {
         <CompanyLookupPage prefillQuery={companyQuery} prefillToken={companyQueryToken} />
       )}
       {activeView === "tenders" && <TenderPage onGoToCompany={goToCompany} />}
+      {activeView === "bidder" && <TilbudsgiverPage onGoToCompany={goToCompany} />}
     </div>
   );
 }

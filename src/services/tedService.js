@@ -97,6 +97,15 @@ async function postSearch(query, { page = 1, limit = 25 } = {}) {
   return response.json();
 }
 
+// De ENKELTE vindernavne på notice'en, ikke firstText()'s sammensatte streng
+// ("SoftwareONE, Atea A/S, KMD A/S, …") — bruges hvor vi skal tælle vindere
+// hver for sig (getMarketPlayers), ikke bare vise dem.
+function winnerNamesList(field) {
+  if (!field) return [];
+  const values = Object.values(field)[0];
+  return Array.isArray(values) ? values : values ? [String(values)] : [];
+}
+
 // Antal vindere på notice'en, ikke kun det første navn firstText() viser.
 // For en almindelig kontrakt er det 1. For en rammeaftale/DPS med kaskade af
 // leverandører kan det være over 100 — signalet vi bruger til at afgøre om
@@ -121,6 +130,7 @@ function normalizeNotice(notice) {
     date: notice["publication-date"] || null,
     noticeType: notice["notice-type"] || null,
     winnerName: firstText(notice["winner-name"]),
+    winnerNames: winnerNamesList(notice["winner-name"]),
     winnerCount,
     // true = flere vindere delte denne notice (typisk en rammeaftale/DPS med
     // kaskade). "value" nedenfor er så notice'ens SAMLEDE loftværdi, ikke
@@ -212,4 +222,67 @@ export async function searchByCPV(cpvCode, options = {}) {
     notices: (data.notices || []).map(normalizeNotice),
     total: data.totalNoticeCount || 0
   };
+}
+
+/**
+ * Find de virksomheder der historisk har vundet flest kontrakter inden for en
+ * CPV-kode (valgfrit afgrænset til én ordregiver) — bruges til at pege på
+ * SANDSYNLIGE KONKURRENTER til et konkret, aktivt udbud.
+ *
+ * Vigtig skelnen: dette er hvem der har VUNDET før, ikke hvem der vil BYDE på
+ * netop dette udbud — der findes ingen offentlig kilde til bud-hensigt, kun
+ * til tildelinger. UI'et der bruger dette må aldrig formulere det som "vil
+ * byde", kun "har historisk vundet i dette marked".
+ *
+ * Samme disciplin som searchWonContractsByCompany() og
+ * tedNoticeService.js: for en rammeaftale/DPS (isMultiWinner) tælles hver
+ * navngiven vinder med i winCount, men ALDRIG i singleContractValueDkk —
+ * rammens loftværdi må ikke tilskrives én enkelt vinder her, af samme grund
+ * som i CompanyLookupPage. Vil man se en konkurrents rigtige andel af en
+ * rammeaftale, er det tedNoticeService.getNoticeDetail() på den specifikke
+ * notice.
+ *
+ * @param {string} cpvCode
+ * @param {{ buyerName?: string, sampleSize?: number, top?: number }} [options]
+ * @returns {Promise<Array<{ name: string, winCount: number, singleContractValueDkk: number, notices: object[] }>>}
+ */
+export async function getMarketPlayers(cpvCode, options = {}) {
+  const code = cpvCode?.split("-")[0]?.trim();
+  if (!code) return [];
+
+  const { buyerName, sampleSize = 50, top = 6 } = options;
+
+  let query = `classification-cpv=${code} AND notice-type=can-standard`;
+  if (buyerName?.trim()) {
+    query += ` AND buyer-name="${escapeQueryPhrase(buyerName.trim())}"`;
+  }
+  query += " SORT BY publication-date DESC";
+
+  const data = await postSearch(query, { page: 1, limit: sampleSize });
+  const notices = (data.notices || []).map(normalizeNotice);
+
+  const byName = new Map();
+  for (const notice of notices) {
+    for (const rawName of notice.winnerNames) {
+      const key = normalizeForMatch(rawName);
+      if (!key) continue;
+
+      const entry = byName.get(key) || {
+        name: rawName,
+        winCount: 0,
+        singleContractValueDkk: 0,
+        notices: []
+      };
+      entry.winCount += 1;
+      if (!notice.isMultiWinner && notice.value != null && notice.currency === "DKK") {
+        entry.singleContractValueDkk += notice.value;
+      }
+      entry.notices.push(notice);
+      byName.set(key, entry);
+    }
+  }
+
+  return Array.from(byName.values())
+    .sort((a, b) => b.winCount - a.winCount || b.singleContractValueDkk - a.singleContractValueDkk)
+    .slice(0, top);
 }
