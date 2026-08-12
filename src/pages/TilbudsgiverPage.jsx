@@ -29,8 +29,10 @@ import {
 } from "../services/tedService";
 import { findLatestRegnskab } from "../services/regnskabService";
 import { getIndustryBenchmark, pickClosestBenchmarkYear } from "../services/industryBenchmarkService";
+import { getGoNoGoAssessment, getClarifyingQuestions } from "../services/bidAssessmentService";
 import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
+import StatusChip from "../components/ui/StatusChip";
 import { Working, SkeletonRows } from "../components/ui/Loading";
 import { formatDkkMio, formatPercent, formatDate } from "../lib/format";
 
@@ -112,6 +114,17 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
   const [market, setMarket] = useState([]);
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketError, setMarketError] = useState(null);
+
+  // AI-vurdering (Groq, gratis tier) — hentes kun på tryk, ikke automatisk,
+  // dels for ikke at bruge kvoten unødigt, dels fordi vurderingen kun giver
+  // mening når egen profil (ownFinancials m.fl.) rent faktisk er indlæst.
+  const [goNoGoStatus, setGoNoGoStatus] = useState("idle");
+  const [goNoGo, setGoNoGo] = useState(null);
+  const [goNoGoError, setGoNoGoError] = useState(null);
+
+  const [questionsStatus, setQuestionsStatus] = useState("idle");
+  const [questions, setQuestions] = useState(null);
+  const [questionsError, setQuestionsError] = useState(null);
 
   // Ingen direkte søgning her — se OWN_COMPANY_NAME. Indlæses én gang ved
   // opstart (useEffect nedenfor), ikke pr. udbud.
@@ -241,6 +254,14 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     setRequirements(null);
     setMarket([]);
     setMarketError(null);
+    // Et nyt udbud gør en tidligere AI-vurdering irrelevant — den handlede om
+    // det GAMLE udbuds krav, ikke det nye.
+    setGoNoGoStatus("idle");
+    setGoNoGo(null);
+    setGoNoGoError(null);
+    setQuestionsStatus("idle");
+    setQuestions(null);
+    setQuestionsError(null);
 
     try {
       const data = await getTenderRequirements(publicationNumber);
@@ -367,6 +388,43 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
   const ownSingleContractValueInField = ownContracts?.notices
     ?.filter((n) => n.value != null && n.currency === "DKK" && !n.isMultiWinner)
     .reduce((sum, n) => sum + n.value, 0);
+
+  // Kompakt, LLM-venligt billede af egne tal — kun det AI-vurderingen reelt
+  // skal bruge. Send ALDRIG mere end det vi selv kan stå inde for er rigtigt
+  // (ingen gæt, ingen afrunding der ser ud som præcision).
+  const ownCompanyForAssessment = {
+    navn: OWN_COMPANY_NAME,
+    omsætning_seneste_regnskab_dkk: ownFinancials?.status === "ok" ? ownFinancials.topline : null,
+    soliditetsgrad_pct: ownFinancials?.status === "ok" ? ownFinancials.solvencyPct : null,
+    branchens_soliditetsgrad_pct: ownBenchmarkForYear?.solvencyPct ?? null,
+    antal_egne_vundne_eu_udbud: ownContracts?.total ?? null
+  };
+
+  const runGoNoGo = async () => {
+    setGoNoGoStatus("loading");
+    setGoNoGoError(null);
+    try {
+      const result = await getGoNoGoAssessment(requirements, ownCompanyForAssessment);
+      setGoNoGo(result);
+      setGoNoGoStatus("ok");
+    } catch (err) {
+      setGoNoGoError(err.message || "Vurderingen fejlede.");
+      setGoNoGoStatus("error");
+    }
+  };
+
+  const runQuestions = async () => {
+    setQuestionsStatus("loading");
+    setQuestionsError(null);
+    try {
+      const result = await getClarifyingQuestions(requirements);
+      setQuestions(result.questions || []);
+      setQuestionsStatus("ok");
+    } catch (err) {
+      setQuestionsError(err.message || "Kunne ikke generere spørgsmål.");
+      setQuestionsStatus("error");
+    }
+  };
 
   return (
     <main className="page">
@@ -599,6 +657,142 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
                 );
               })}
             </div>
+          </section>
+
+          <section className="card">
+            <div className="section-header">
+              <div>
+                <h3>AI-vurdering: Go/No-Go</h3>
+                <p className="muted small">
+                  Groqs gpt-oss-120b vurderer ud fra egnethedskravene ovenfor og {OWN_COMPANY_NAME}s egne
+                  tal — intet andet. Den gætter aldrig på manglende data, kun flager det.
+                </p>
+              </div>
+              <span className="pill">AI-genereret</span>
+            </div>
+
+            {goNoGoStatus === "idle" && (
+              <button
+                className="btn btn-primary"
+                onClick={runGoNoGo}
+                disabled={ownStatus !== "found"}
+              >
+                Vurdér vores chancer
+              </button>
+            )}
+
+            {goNoGoStatus === "loading" && (
+              <p className="muted small">
+                <Working>Vurderer mod egnethedskravene…</Working>
+              </p>
+            )}
+
+            {goNoGoStatus === "error" && (
+              <div className="stack stack-tight">
+                <p className="muted small">{goNoGoError}</p>
+                <button className="btn btn-sm btn-secondary" onClick={runGoNoGo} style={{ alignSelf: "flex-start" }}>
+                  Prøv igen
+                </button>
+              </div>
+            )}
+
+            {goNoGoStatus === "ok" && goNoGo && (
+              <div className="stack">
+                <StatusChip
+                  tone={
+                    goNoGo.recommendation === "go" ? "ok" : goNoGo.recommendation === "no-go" ? "alert" : "warn"
+                  }
+                  size="lg"
+                >
+                  {goNoGo.recommendation === "go"
+                    ? "Go"
+                    : goNoGo.recommendation === "no-go"
+                      ? "No-go"
+                      : "Usikkert"}
+                </StatusChip>
+                <p className="muted small" style={{ margin: 0 }}>
+                  Konfidens: <strong>{goNoGo.confidence}</strong>
+                </p>
+                <p className="text-sm" style={{ margin: 0 }}>
+                  {goNoGo.reasoning}
+                </p>
+                {goNoGo.key_points?.length > 0 && (
+                  <ul className="trace">
+                    {goNoGo.key_points.map((point, i) => (
+                      <li key={i}>{point}</li>
+                    ))}
+                  </ul>
+                )}
+                {goNoGo.missing_data?.length > 0 && (
+                  <div className="subcard">
+                    <p className="small" style={{ marginTop: 0 }}>
+                      <strong>Data der mangler for en sikrere vurdering:</strong>
+                    </p>
+                    <ul className="trace" style={{ marginTop: 0 }}>
+                      {goNoGo.missing_data.map((item, i) => (
+                        <li key={i}>{item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <button className="btn btn-sm btn-secondary" onClick={runGoNoGo} style={{ alignSelf: "flex-start" }}>
+                  Vurdér igen
+                </button>
+              </div>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="section-header">
+              <div>
+                <h3>Foreslåede spørgsmål til ordregiver</h3>
+                <p className="muted small">
+                  Groqs llama-3.1-8b genererer forslag ud fra udbudsteksten — send dem gennem
+                  udbudsplatformens egen spørgsmål/svar-fane, appen sender intet selv.
+                </p>
+              </div>
+              <span className="pill">AI-genereret</span>
+            </div>
+
+            {questionsStatus === "idle" && (
+              <button className="btn btn-primary" onClick={runQuestions}>
+                Generér spørgsmål
+              </button>
+            )}
+
+            {questionsStatus === "loading" && (
+              <p className="muted small">
+                <Working>Læser udbudsteksten igennem…</Working>
+              </p>
+            )}
+
+            {questionsStatus === "error" && (
+              <div className="stack stack-tight">
+                <p className="muted small">{questionsError}</p>
+                <button className="btn btn-sm btn-secondary" onClick={runQuestions} style={{ alignSelf: "flex-start" }}>
+                  Prøv igen
+                </button>
+              </div>
+            )}
+
+            {questionsStatus === "ok" && questions && (
+              <div className="stack">
+                {questions.length === 0 ? (
+                  <p className="muted small">Ingen forslag denne gang — prøv igen.</p>
+                ) : (
+                  <ol className="stack stack-tight" style={{ paddingLeft: 18 }}>
+                    {questions.map((q, i) => (
+                      <li key={i} className="text-sm">
+                        {q}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                <button className="btn btn-sm btn-secondary" onClick={runQuestions} style={{ alignSelf: "flex-start" }}>
+                  Generér nye
+                </button>
+              </div>
+            )}
           </section>
 
           <section className="card">
