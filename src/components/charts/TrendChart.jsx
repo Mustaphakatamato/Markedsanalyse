@@ -6,6 +6,11 @@ import { useState } from "react";
 // a surface-color ring, hairline solid gridlines, one direct label (the
 // latest point), a hover crosshair + tooltip. No legend — a single series
 // doesn't need one; the section header names it.
+//
+// Linjefarven er --chart-line, som er kontrastvalideret mod kortfladen i
+// BEGGE tilstande — se kommentaren ved tokenet i index.css. Fladen under
+// linjen er samme hue ved lav alpha; den er ren kontekst og bærer ingen
+// aflæsning, derfor stilles der ikke kontrastkrav til den.
 
 const WIDTH = 640;
 const HEIGHT = 260;
@@ -78,6 +83,11 @@ export default function TrendChart({ points, formatValue, formatTick }) {
   const tickLabel = formatTick || formatValue;
   const hovered = hoverIndex != null ? points[hoverIndex] : null;
 
+  // Nulniveauet markeres kraftigere end de øvrige gridlinjer når serien
+  // krydser det — forskellen på over og under nul er den vigtigste aflæsning
+  // i et regnskab og skal kunne ses uden at læse aksen.
+  const baselineY = domainMin < 0 && domainMax > 0 ? yFor(0) : null;
+
   return (
     <div className="trend-chart">
       <svg
@@ -94,6 +104,28 @@ export default function TrendChart({ points, formatValue, formatTick }) {
             </text>
           </g>
         ))}
+
+        {baselineY != null && (
+          <line
+            x1={PADDING.left}
+            x2={WIDTH - PADDING.right}
+            y1={baselineY}
+            y2={baselineY}
+            className="trend-baseline"
+          />
+        )}
+
+        {/* Flade under linjen — kun kontekst, ingen aflæsning. Ankres på
+            nulniveauet hvis serien krydser det, ellers på bunden af feltet. */}
+        {segments
+          .filter((seg) => seg.length > 1)
+          .map((seg, i) => {
+            const anchorY = baselineY ?? HEIGHT - PADDING.bottom;
+            const d = `${seg.map((pt, j) => `${j === 0 ? "M" : "L"}${pt.x},${pt.y}`).join(" ")} L${
+              seg[seg.length - 1].x
+            },${anchorY} L${seg[0].x},${anchorY} Z`;
+            return <path key={`fill-${i}`} d={d} fill="var(--chart-fill)" stroke="none" />;
+          })}
 
         {segments.map((seg, i) => (
           <path

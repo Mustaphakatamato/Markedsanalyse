@@ -119,7 +119,9 @@ src/
                så UI'et ikke kender kildernes formater
   data/        Demo-data (suppliers, cpvOptions) + naceSectionMap (branchekoder → DST-sektor)
   context/     ProjectsContext — udbud i localStorage
-  components/  layout/TopNav, charts/TrendChart (håndtegnet SVG, ingen chart-lib)
+  components/  layout/TopNav+ThemeToggle, charts/TrendChart (håndtegnet SVG,
+               ingen chart-lib), ui/ (SourceBadge, StatusChip, ConfidenceMeter,
+               Loading, Icon — små præsentationskomponenter, ingen datahentning)
   pages/       CompanyLookupPage, TenderPage
 scripts/
   indlaes-cvr-navne.mjs      Ugentlig indlæsning af navneindekset

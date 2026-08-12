@@ -1,23 +1,249 @@
+/* ============================================================================
+   Markedsanalyse — designsystem
+   ----------------------------------------------------------------------------
+   Ét princip styrer paletten: FARVE ER SIGNAL, IKKE PYNT. Grønt betyder
+   udelukkende "live kilde / verificeret", gult udelukkende "demo-data", rødt
+   udelukkende "kræver afklaring". Ingen af de tre farver bruges dekorativt
+   nogen steder — ellers holder signalet op med at betyde noget, og det er den
+   eneste ting på siden en ordregiver ikke må tage fejl af.
+
+   Kilde-badges er derfor bevidst IKKE hue-kodet pr. datakilde (fem
+   dekorative farver ville udvande netop det signal). Identitet bæres af
+   initialerne + navnet; farven bærer tillidsniveauet.
+
+   Alle tekstfarver er kontrastvalideret mod den flade de faktisk står på,
+   både i lys og mørk tilstand — mindst WCAG AA (4.5:1) for brødtekst.
+   ========================================================================= */
+
 :root {
-  --bg: #f3f6fb;
-  --card: #ffffff;
-  --card-soft: #f8fafc;
-  --border: #d9e1ec;
-  --text: #0f172a;
-  --muted: #5b667a;
-  --primary: #0f172a;
-  --primary-2: #1e293b;
-  --white: #ffffff;
-  --danger: #b91c1c;
-  --ok: #15803d;
-  --shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
-  --radius: 20px;
-  /* Dataviz sequential/single-series hue — validated: node validate_palette.js
-     "#2a78d6" --mode light → all checks pass against this app's card surface. */
+  color-scheme: light;
+
+  /* — flader ————————————————————————————————————————— */
+  --plane: #eaeff6;
+  --surface: #ffffff;
+  --surface-2: #f6f8fc;
+  --surface-3: #eef2f8;
+  --surface-inv: #101827;
+
+  /* — blæk ——————————————————————————————————————————— */
+  --ink: #0d1526;       /* overskrifter, tal */
+  --ink-2: #475569;     /* brødtekst        7,6:1 på hvid */
+  --ink-3: #5b6a82;     /* dæmpet/meta      5,7:1 på hvid */
+  --ink-inv: #f3f7fc;
+
+  /* — streger ————————————————————————————————————————— */
+  --line: #e2e8f2;
+  --line-2: #ccd6e5;
+  --line-strong: #b3c1d6;
+
+  /* — signal: verificeret / live kilde ————————————————— */
+  --ok-fg: #0d6b45;     /* 6,6:1 på hvid */
+  --ok-bg: #e7f6ef;
+  --ok-bd: #b6e2cd;
+  --ok-mark: #0ca30c;
+
+  /* — signal: demo-data ——————————————————————————————— */
+  --demo-fg: #92400e;   /* 7,1:1 på hvid */
+  --demo-bg: #fdf4e5;
+  --demo-bd: #f0d9ab;
+  --demo-mark: #fab219;
+
+  /* — signal: kræver afklaring / flag ————————————————— */
+  --alert-fg: #b91c1c;  /* 6,5:1 på hvid */
+  --alert-bg: #fdecec;
+  --alert-bd: #f5c4c0;
+  --alert-mark: #d03b3b;
+
+  /* — signal: mellemniveau (middel soliditet, verifikation) —— */
+  --warn-fg: #9a3412;   /* 7,3:1 på hvid */
+  --warn-bg: #fdefe8;
+  --warn-bd: #f4cdb8;
+  --warn-mark: #ec835a;
+
+  /* — signal: analyse / i gang / kilde-reference ——————— */
+  --info-fg: #1c5cab;   /* 6,6:1 på hvid */
+  --info-bg: #e9f1fd;
+  --info-bd: #c2daf8;
+  --info-mark: #2a78d6;
+
+  /* Dataviz single-series hue — valideret med skill'ens
+     scripts/validate_palette.js mod netop denne apps kortflade:
+     "#2a78d6" --mode light --surface "#ffffff" → alle checks PASS.
+     Mørk tilstand: "#3987e5" --mode dark --surface "#111826" → alle PASS.
+     Skift ikke farven uden at køre validatoren igen. */
   --chart-line: #2a78d6;
+  --chart-fill: rgba(42, 120, 214, 0.10);
+  --chart-grid: #e7ecf4;
+
+  /* — effekter ————————————————————————————————————————— */
+  --sheen: rgba(255, 255, 255, 0.85);
+  --shadow-1: 0 1px 2px rgba(13, 21, 38, 0.05), 0 1px 1px rgba(13, 21, 38, 0.03);
+  --shadow-2: 0 2px 4px rgba(13, 21, 38, 0.05), 0 8px 24px -12px rgba(13, 21, 38, 0.16);
+  --shadow-pop: 0 12px 40px -12px rgba(13, 21, 38, 0.28), 0 2px 6px rgba(13, 21, 38, 0.06);
+  --glass: rgba(255, 255, 255, 0.78);
+  --grid-ink: rgba(13, 21, 38, 0.035);
+
+  /* — geometri ————————————————————————————————————————— */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+
+  /* — typografi ————————————————————————————————————————— */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+  /* Monospace bruges til ID'er og tal der læses tegn for tegn — CVR-numre,
+     notice-numre, CPV-koder. Ikke som stilgreb: det er hurtigere at
+     sammenholde med et andet dokument når cifrene står i faste kolonner. */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* Bagudkompatible aliaser (gammelt navngivning brugt enkelte steder) */
+  --bg: var(--plane);
+  --card: var(--surface);
+  --card-soft: var(--surface-2);
+  --border: var(--line);
+  --text: var(--ink);
+  --muted: var(--ink-3);
+  --radius: var(--r-xl);
+  --danger: var(--alert-fg);
+  --ok: var(--ok-fg);
+  --shadow: var(--shadow-2);
 }
 
-* {
+/* — mørk tilstand ————————————————————————————————————————
+   Bevidst valgt, ikke et automatisk invers: hvert trin er sat mod den mørke
+   flade og kontrastmålt igen. Lys er default (et due diligence-notat
+   printes og screenshottes ind i udbudsmaterialet), mørk er tilgængelig for
+   dem der arbejder i den. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --plane: #080d15;
+    --surface: #111826;
+    --surface-2: #161f30;
+    --surface-3: #1c2637;
+    --surface-inv: #e6edf7;
+
+    --ink: #eaf1fa;
+    --ink-2: #b3c2d6;   /* 8,6:1 på kortfladen */
+    --ink-3: #8ea3bd;   /* 7,1:1 på kortfladen */
+    --ink-inv: #0d1526;
+
+    --line: #232f45;
+    --line-2: #2e3d57;
+    --line-strong: #3c4d6b;
+
+    --ok-fg: #6ee7b7;   /* 11,7:1 */
+    --ok-bg: rgba(12, 163, 12, 0.13);
+    --ok-bd: rgba(110, 231, 183, 0.26);
+    --ok-mark: #0ca30c;
+
+    --demo-fg: #fbbf24; /* 10,6:1 */
+    --demo-bg: rgba(250, 178, 25, 0.12);
+    --demo-bd: rgba(251, 191, 36, 0.26);
+    --demo-mark: #fab219;
+
+    --alert-fg: #fca5a5; /* 9,4:1 */
+    --alert-bg: rgba(208, 59, 59, 0.16);
+    --alert-bd: rgba(252, 165, 165, 0.28);
+    --alert-mark: #d03b3b;
+
+    --warn-fg: #f2b393;
+    --warn-bg: rgba(236, 131, 90, 0.14);
+    --warn-bd: rgba(242, 179, 147, 0.26);
+    --warn-mark: #ec835a;
+
+    --info-fg: #93c5fd;  /* 9,9:1 */
+    --info-bg: rgba(57, 135, 229, 0.15);
+    --info-bd: rgba(57, 135, 229, 0.32);
+    --info-mark: #3987e5;
+
+    --chart-line: #3987e5;
+    --chart-fill: rgba(57, 135, 229, 0.14);
+    --chart-grid: #202b3f;
+
+    --sheen: rgba(255, 255, 255, 0.07);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 2px 4px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
+    --shadow-pop: 0 16px 44px -14px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
+    --glass: rgba(17, 24, 38, 0.82);
+    --grid-ink: rgba(255, 255, 255, 0.035);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --plane: #080d15;
+  --surface: #111826;
+  --surface-2: #161f30;
+  --surface-3: #1c2637;
+  --surface-inv: #e6edf7;
+
+  --ink: #eaf1fa;
+  --ink-2: #b3c2d6;
+  --ink-3: #8ea3bd;
+  --ink-inv: #0d1526;
+
+  --line: #232f45;
+  --line-2: #2e3d57;
+  --line-strong: #3c4d6b;
+
+  --ok-fg: #6ee7b7;
+  --ok-bg: rgba(12, 163, 12, 0.13);
+  --ok-bd: rgba(110, 231, 183, 0.26);
+  --ok-mark: #0ca30c;
+
+  --demo-fg: #fbbf24;
+  --demo-bg: rgba(250, 178, 25, 0.12);
+  --demo-bd: rgba(251, 191, 36, 0.26);
+  --demo-mark: #fab219;
+
+  --alert-fg: #fca5a5;
+  --alert-bg: rgba(208, 59, 59, 0.16);
+  --alert-bd: rgba(252, 165, 165, 0.28);
+  --alert-mark: #d03b3b;
+
+  --warn-fg: #f2b393;
+  --warn-bg: rgba(236, 131, 90, 0.14);
+  --warn-bd: rgba(242, 179, 147, 0.26);
+  --warn-mark: #ec835a;
+
+  --info-fg: #93c5fd;
+  --info-bg: rgba(57, 135, 229, 0.15);
+  --info-bd: rgba(57, 135, 229, 0.32);
+  --info-mark: #3987e5;
+
+  --chart-line: #3987e5;
+  --chart-fill: rgba(57, 135, 229, 0.14);
+  --chart-grid: #202b3f;
+
+  --sheen: rgba(255, 255, 255, 0.07);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 4px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
+  --shadow-pop: 0 16px 44px -14px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
+  --glass: rgba(17, 24, 38, 0.82);
+  --grid-ink: rgba(255, 255, 255, 0.035);
+}
+
+/* ==========================================================================
+   Basis
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -26,13 +252,41 @@ body,
 #root {
   margin: 0;
   min-height: 100%;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: var(--bg);
-  color: var(--text);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  line-height: 1.5;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.55;
+  background: var(--plane);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv05" 1, "ss01" 1;
+}
+
+/* Et næsten usynligt teknisk raster i baggrunden — det ligger BAG alle kort
+   og ses kun i mellemrummene. 3,5% blæk, ingen bevægelse. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: linear-gradient(var(--grid-ink) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-ink) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, transparent 75%);
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, transparent 75%);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
 }
 
 button,
@@ -40,79 +294,328 @@ input,
 select,
 textarea {
   font: inherit;
+  color: inherit;
 }
+
+a {
+  color: var(--info-fg);
+  text-decoration: none;
+  text-underline-offset: 3px;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+a:hover {
+  border-bottom-color: currentColor;
+}
+
+:focus-visible {
+  outline: 2px solid var(--info-mark);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.014em;
+  line-height: 1.22;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: var(--s5) 0;
+}
+
+/* ==========================================================================
+   Typografi-hjælpere
+   ========================================================================== */
+
+.eyebrow {
+  margin: 0 0 var(--s2) 0;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 650;
+  font-family: var(--font-mono);
+}
+
+.top-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  letter-spacing: -0.02em;
+  font-weight: 660;
+}
+
+.hero-title-sm {
+  margin: 0 0 var(--s2) 0;
+  font-size: clamp(1.45rem, 1.1rem + 1.3vw, 1.9rem);
+  letter-spacing: -0.025em;
+}
+
+.section-header h3,
+.card h3 {
+  font-size: 1.0625rem;
+  letter-spacing: -0.015em;
+}
+
+.card h4 {
+  font-size: 0.9375rem;
+}
+
+.section-header h3,
+.card h3,
+.card h4 {
+  margin-top: 0;
+  margin-bottom: var(--s2);
+}
+
+.muted {
+  color: var(--ink-3);
+}
+
+.small {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.text-sm {
+  font-size: 0.875rem;
+}
+
+.text-danger {
+  color: var(--alert-fg);
+}
+
+.text-ok {
+  color: var(--ok-fg);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  letter-spacing: -0.01em;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.lede {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 0.9375rem;
+  max-width: 68ch;
+}
+
+/* ==========================================================================
+   Skal og topbar
+   ========================================================================== */
 
 .app-shell {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
-  background: #fff;
-  border-bottom: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border-bottom: 1px solid var(--line);
 }
 
 .topbar.sticky {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 30;
 }
 
 .topbar-inner {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 18px 24px;
+  padding: var(--s3) var(--s6);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: var(--s4);
 }
 
-.top-title {
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+/* Monogram: et lille datamærke i stedet for et logo vi ikke har. */
+.brand-mark {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-md);
+  display: grid;
+  place-items: center;
+  background: var(--surface-inv);
+  color: var(--ink-inv);
+  box-shadow: var(--shadow-1);
+}
+
+.brand-mark svg {
+  display: block;
+}
+
+.brand-text {
+  min-width: 0;
+}
+
+.brand-text .eyebrow {
   margin: 0;
-  font-size: 1.75rem;
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
 }
 
-.eyebrow {
-  margin: 0 0 6px 0;
-  font-size: 0.75rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #64748b;
-  font-weight: 700;
+.topbar-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
 }
+
+/* Segmenteret navigation — ét spor, aktiv knap løftet op på kortfladen. */
+.nav-switch {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.nav-switch button {
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  padding: 7px 14px;
+  border-radius: 7px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.nav-switch button:hover {
+  color: var(--ink);
+}
+
+.nav-switch button[aria-current="page"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.icon-button:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.icon-button svg {
+  display: block;
+}
+
+/* ==========================================================================
+   Sideflow og flader
+   ========================================================================== */
 
 .page {
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px;
+  padding: var(--s6);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--s5);
 }
 
 .card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: var(--shadow);
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  padding: var(--s6);
+  box-shadow: var(--shadow-1);
+}
+
+/* Kort der venter på data får en tynd, vandrende linje i toppen — samme
+   signal som en igangværende forespørgsel, uden at flytte på indholdet. */
+.card.is-working::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  overflow: hidden;
+  background: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--info-mark) 35%,
+      var(--info-mark) 65%,
+      transparent 100%
+    )
+    no-repeat;
+  background-size: 42% 100%;
+  animation: scan 1.9s ease-in-out infinite;
 }
 
 .subcard {
-  background: var(--card-soft);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: var(--s4);
 }
 
-.hero-title-sm {
-  margin: 0 0 6px 0;
-  font-size: 1.8rem;
+.subcard.is-open {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
 }
+
+.card-foot {
+  margin-top: var(--s5);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+}
+
+/* ==========================================================================
+   Layout-hjælpere
+   ========================================================================== */
 
 .grid {
   display: grid;
-  gap: 24px;
+  gap: var(--s5);
 }
 
 .two-one {
@@ -128,13 +631,17 @@ textarea {
 }
 
 .inner-gap {
-  margin-top: 20px;
+  margin-top: var(--s5);
 }
 
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--s3);
+}
+
+.stack-tight {
+  gap: var(--s2);
 }
 
 .section-header,
@@ -142,112 +649,523 @@ textarea {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: var(--s4);
+}
+
+.section-header {
+  margin-bottom: var(--s4);
 }
 
 .align-right {
   text-align: right;
 }
 
-.section-header h3,
-.card h3,
-.card h4 {
-  margin-top: 0;
-  margin-bottom: 8px;
+.align-end {
+  align-items: flex-end;
 }
 
-.section-header h3 {
-  font-size: 1.5rem;
-}
-
-.muted {
-  color: var(--muted);
-}
-
-.small {
-  font-size: 0.85rem;
-}
-
-.text-sm {
-  font-size: 0.95rem;
-}
-
-.text-danger {
-  color: var(--danger);
-}
-
-.text-ok {
-  color: var(--ok);
-}
-
-.tag-row {
+.row {
   display: flex;
+  align-items: center;
+  gap: var(--s2);
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 16px 0;
 }
 
-.tag {
-  padding: 6px 10px;
+.button-row {
+  display: flex;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ==========================================================================
+   Chips, badges og målere
+   ========================================================================== */
+
+/* Basis-chip. Alle varianter arver den — kun farvevariablerne skifter. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
   border-radius: 999px;
-  background: #eef2f7;
-  color: var(--text);
-  font-size: 0.8rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line-2);
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
+.chip__dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chip svg {
+  flex: none;
+  display: block;
+}
+
+.chip-ok {
+  background: var(--ok-bg);
+  border-color: var(--ok-bd);
+  color: var(--ok-fg);
+}
+
+.chip-demo {
+  background: var(--demo-bg);
+  border-color: var(--demo-bd);
+  color: var(--demo-fg);
+}
+
+.chip-alert {
+  background: var(--alert-bg);
+  border-color: var(--alert-bd);
+  color: var(--alert-fg);
+}
+
+.chip-warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-bd);
+  color: var(--warn-fg);
+}
+
+.chip-info {
+  background: var(--info-bg);
+  border-color: var(--info-bd);
+  color: var(--info-fg);
+}
+
+.chip-lg {
+  padding: 6px 12px;
+  font-size: 0.8125rem;
+}
+
+/* Bagudkompatible pille-navne, mappet på chip-systemet. */
 .pill {
   display: inline-flex;
   align-items: center;
-  padding: 7px 12px;
+  gap: 6px;
+  padding: 4px 10px;
   border-radius: 999px;
-  background: #eef2f7;
-  color: var(--text);
-  font-size: 0.82rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line-2);
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .pill-ok {
-  background: #ecfdf3;
-  color: var(--ok);
-  border-color: #bbf7d0;
+  background: var(--ok-bg);
+  border-color: var(--ok-bd);
+  color: var(--ok-fg);
 }
 
 .pill-warn {
-  background: #fef2f2;
-  color: var(--danger);
-  border-color: #fecaca;
+  background: var(--alert-bg);
+  border-color: var(--alert-bd);
+  color: var(--alert-fg);
 }
 
 .pill-mock {
-  background: #fffbeb;
-  color: #92400e;
-  border-color: #fde68a;
+  background: var(--demo-bg);
+  border-color: var(--demo-bd);
+  color: var(--demo-fg);
 }
 
-.filters-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr auto;
-  gap: 16px;
-  align-items: end;
+/* Metadata-tags: neutrale, tætte, ingen farve. */
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: var(--s4) 0 0;
 }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: var(--r-xs);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.tag--code {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+.tag__key {
+  color: var(--ink-3);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 650;
+}
+
+/* — kilde-badge —————————————————————————————————————————
+   Initial-mærke + kildenavn + tillidsniveau. Farven kommer af NIVEAUET
+   (live/demo), aldrig af hvilken kilde det er — identitet bæres af
+   initialerne, som altid står der. */
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px 3px 3px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-3);
+  color: var(--ink-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  max-width: 100%;
+}
+
+.source__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+
+.source__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source--live {
+  background: var(--ok-bg);
+  border-color: var(--ok-bd);
+  color: var(--ok-fg);
+}
+
+.source--live .source__mark {
+  background: var(--surface);
+  border-color: var(--ok-bd);
+  color: var(--ok-fg);
+}
+
+.source--demo {
+  background: var(--demo-bg);
+  border-color: var(--demo-bd);
+  color: var(--demo-fg);
+}
+
+.source--demo .source__mark {
+  background: var(--surface);
+  border-color: var(--demo-bd);
+  color: var(--demo-fg);
+}
+
+.source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+}
+
+/* — verdikt-blok ————————————————————————————————————————
+   Den ene konklusion et kort findes for: stor status + kort begrundelse. */
+.verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+}
+
+.verdict--ok {
+  border-color: var(--ok-bd);
+  background: var(--ok-bg);
+}
+
+.verdict--warn {
+  border-color: var(--warn-bd);
+  background: var(--warn-bg);
+}
+
+.verdict--alert {
+  border-color: var(--alert-bd);
+  background: var(--alert-bg);
+}
+
+.verdict__icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.verdict--ok .verdict__icon {
+  color: var(--ok-fg);
+}
+
+.verdict--warn .verdict__icon {
+  color: var(--warn-fg);
+}
+
+.verdict--alert .verdict__icon {
+  color: var(--alert-fg);
+}
+
+.verdict__body {
+  min-width: 0;
+}
+
+.verdict__label {
+  margin: 0;
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 650;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+.verdict__value {
+  margin: 2px 0 0;
+  font-size: 1.0625rem;
+  font-weight: 660;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.verdict__note {
+  margin: var(--s1) 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+
+/* — konfidensmåler ——————————————————————————————————————
+   Tre segmenter. Niveauet står ALTID som tekst ved siden af — farven og
+   antallet af fyldte segmenter er redundante, ikke bærende. */
+.confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.confidence__track {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.confidence__seg {
+  width: 15px;
+  height: 5px;
+  border-radius: 2px;
+  background: var(--line-2);
+}
+
+.confidence__seg.is-on {
+  background: currentColor;
+}
+
+.confidence__label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.confidence--high {
+  color: var(--alert-fg);
+}
+
+.confidence--low {
+  color: var(--warn-fg);
+}
+
+.confidence--none {
+  color: var(--ok-fg);
+}
+
+/* ==========================================================================
+   Nøgletalsrækker, tal-fliser og tabeller
+   ========================================================================== */
+
+.metrics {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s4);
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.875rem;
+}
+
+.metric:last-child {
+  border-bottom: 0;
+}
+
+.metric__label {
+  color: var(--ink-2);
+  min-width: 0;
+}
+
+.metric__value {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-align: right;
+}
+
+.metric__value--ok {
+  color: var(--ok-fg);
+}
+
+.metric__value--alert {
+  color: var(--alert-fg);
+}
+
+.stat {
+  padding: var(--s4);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.stat__label {
+  margin: 0 0 var(--s1);
+  font-size: 0.6875rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  font-weight: 650;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+.stat__value {
+  display: block;
+  font-size: 1.125rem;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat__value--big {
+  font-size: 1.5rem;
+}
+
+.data-table,
+.trend-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.data-table th,
+.trend-table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-2);
+  color: var(--ink-3);
+  font-weight: 650;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  background: var(--surface-2);
+}
+
+.data-table th:first-child,
+.trend-table th:first-child {
+  border-top-left-radius: var(--r-sm);
+  border-bottom-left-radius: 0;
+}
+
+.data-table th:last-child,
+.trend-table th:last-child {
+  border-top-right-radius: var(--r-sm);
+}
+
+.data-table td,
+.trend-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.data-table tbody tr:last-child td,
+.trend-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table td:last-child,
+.data-table th:last-child,
+.trend-table td:last-child,
+.trend-table th:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tbody tr:hover td {
+  background: var(--surface-2);
+}
+
+.data-table .row-total td {
+  border-top: 1px solid var(--line-2);
+  background: var(--surface-2);
+}
+
+/* ==========================================================================
+   Formularer og knapper
+   ========================================================================== */
 
 label {
   display: block;
-  margin-bottom: 8px;
-  font-size: 0.92rem;
-  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--ink-2);
 }
 
 .input,
 .textarea,
 select {
   width: 100%;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: white;
+  padding: 10px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .textarea {
@@ -255,36 +1173,78 @@ select {
   resize: vertical;
 }
 
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--ink-3);
+  opacity: 0.75;
+}
+
+.input:hover,
+.textarea:hover,
+select:hover {
+  border-color: var(--line-strong);
+}
+
 .input:focus,
 .textarea:focus,
 select:focus {
-  border-color: #94a3b8;
-  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.15);
+  border-color: var(--info-mark);
+  box-shadow: 0 0 0 3px var(--info-bg);
 }
 
-/* Live forslag under firmanavn-feltet i CompanyLookupPage. Positioneres
-   relativt til den ref'ede wrapper om label+input (position: relative sat
-   inline der), ikke relativt til .filters-grid — ellers ville boksen ikke
-   følge feltets egen bredde/placering i grid-layoutet. */
+.filters-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s3);
+  align-items: end;
+}
+
+/* Søgefelt med ikon i venstre kant. Ikonet ankres til selve inputtet
+   (.search-field__control), mens forslagsboksen ankres til hele feltet
+   inkl. label — ellers ville boksen lægge sig oven i inputtet. */
+.search-field {
+  position: relative;
+}
+
+.search-field__control {
+  position: relative;
+}
+
+.search-field .input {
+  padding-left: 40px;
+  font-size: 0.9375rem;
+}
+
+.search-field__icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-3);
+  pointer-events: none;
+  display: block;
+}
+
 .suggestions-list {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 6px);
   left: 0;
   right: 0;
   z-index: 20;
-  margin: 4px 0 0;
-  padding: 6px;
+  margin: 0;
+  padding: 5px;
   list-style: none;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
-  max-height: 320px;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-pop);
+  max-height: 340px;
   overflow-y: auto;
+  animation: pop-in 0.14s ease-out;
 }
 
 .suggestions-list li + li {
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .suggestions-list button {
@@ -292,20 +1252,21 @@ select:focus {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: var(--s3);
+  padding: 9px 11px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: transparent;
   text-align: left;
   cursor: pointer;
   font: inherit;
-  color: var(--text);
+  font-size: 0.875rem;
+  color: var(--ink);
 }
 
 .suggestions-list button:hover,
 .suggestions-list button:focus-visible {
-  background: var(--card-soft);
+  background: var(--surface-2);
   outline: none;
 }
 
@@ -317,87 +1278,326 @@ select:focus {
 
 .suggestions-list button span:last-child {
   flex-shrink: 0;
-}
-
-.button-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.align-end {
-  align-items: flex-end;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ink-3);
 }
 
 .btn {
-  border: none;
-  border-radius: 12px;
-  padding: 12px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: 10px 15px;
   cursor: pointer;
-  font-weight: 600;
-  transition: 0.2s ease;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
+    box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
-.btn:hover {
-  transform: translateY(-1px);
+.btn svg {
+  flex: none;
+  display: block;
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
-  transform: none;
 }
 
 .btn-sm {
-  padding: 8px 12px;
-  font-size: 0.85rem;
+  padding: 6px 11px;
+  font-size: 0.8125rem;
+  border-radius: var(--r-sm);
 }
 
 .btn-primary {
-  background: var(--primary);
-  color: white;
+  background: var(--surface-inv);
+  color: var(--ink-inv);
+  box-shadow: var(--shadow-1);
+}
+
+.btn-primary:not(:disabled):hover {
+  box-shadow: var(--shadow-2);
+  opacity: 0.92;
 }
 
 .btn-secondary {
-  background: white;
-  color: var(--text);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-color: var(--line-2);
+}
+
+.btn-secondary:not(:disabled):hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-3);
+  border-color: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* Segmenteret vælger — bruges til nøgletals-skift under grafen. */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
 }
 
 .nav-button {
-  border: 1px solid var(--border);
-  background: white;
-  color: var(--text);
-  border-radius: 12px;
-  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: 7px;
+  padding: 6px 12px;
   cursor: pointer;
+  font-size: 0.8125rem;
   font-weight: 600;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.nav-button:hover {
+  color: var(--ink);
 }
 
 .nav-button.active {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
 }
 
-.supplier-card {
+/* ==========================================================================
+   Indlæsningstilstande
+   ========================================================================== */
+
+.skeleton {
+  display: block;
+  height: 0.75rem;
+  border-radius: var(--r-xs);
+  background: var(--surface-3);
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--sheen), transparent);
+  animation: sweep 1.5s ease-in-out infinite;
+}
+
+.skeleton-rows {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  padding: 2px 0;
 }
 
+.skeleton-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s4);
+}
+
+/* Live-tilstand: "arbejder på det nu". Prikkerne pulserer i takt, teksten
+   står altid ved siden af — animationen bærer ikke information alene. */
+.working {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+}
+
+.working__dots {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+
+.working__dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--info-mark);
+  animation: blip 1.15s ease-in-out infinite;
+}
+
+.working__dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.working__dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+/* I en knap arver tilstanden knappens egen farve — ellers ville den blå
+   prik forsvinde på den mørke primærknap. */
+.btn .working {
+  color: inherit;
+  font-size: inherit;
+}
+
+.btn .working__dots i {
+  background: currentColor;
+}
+
+/* Operations-chip: ét diskret kald, med sin egen tilstand. */
+.op {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.op--running {
+  border-color: var(--info-bd);
+  background: var(--info-bg);
+  color: var(--info-fg);
+}
+
+.op--done {
+  border-color: var(--ok-bd);
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+
+.op--failed {
+  border-color: var(--alert-bd);
+  background: var(--alert-bg);
+  color: var(--alert-fg);
+}
+
+/* ==========================================================================
+   Udfoldning (detaljepanel)
+   ========================================================================== */
+
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.reveal.is-open {
+  grid-template-rows: 1fr;
+}
+
+.reveal__inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.reveal__body {
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.22s ease 0.06s, transform 0.22s ease 0.06s;
+}
+
+.reveal.is-open .reveal__body {
+  opacity: 1;
+  transform: none;
+}
+
+/* Metodespor: hvordan tallet blev til. Kun rigtige, dokumenterede trin. */
+.trace {
+  margin: 0;
+  padding: 0 0 0 var(--s4);
+  list-style: none;
+  border-left: 1px solid var(--line-2);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.trace li {
+  position: relative;
+  font-size: 0.75rem;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+.trace li::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--s4) - 3px);
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+
+.trace li strong {
+  color: var(--ink-2);
+  font-weight: 650;
+}
+
+/* ==========================================================================
+   Tom tilstand
+   ========================================================================== */
+
 .empty-state {
-  background: #f8fafc;
-  border: 1px dashed var(--border);
-  border-radius: 20px;
-  padding: 40px 24px;
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  padding: var(--s7) var(--s6);
   text-align: center;
 }
 
 .empty-state h4 {
   margin-top: 0;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
+
+.empty-state p {
+  margin: 0 auto;
+  max-width: 60ch;
+  font-size: 0.875rem;
+}
+
+.empty-state__icon {
+  color: var(--ink-3);
+  margin-bottom: var(--s3);
+  display: inline-block;
+}
+
+/* ==========================================================================
+   Graf
+   ========================================================================== */
 
 .trend-chart {
   position: relative;
@@ -411,82 +1611,177 @@ select:focus {
 }
 
 .trend-grid {
-  stroke: var(--border);
+  stroke: var(--chart-grid);
   stroke-width: 1;
 }
 
 .trend-axis-label {
-  fill: var(--muted);
+  fill: var(--ink-3);
   font-size: 11px;
+  font-family: var(--font-mono);
 }
 
 .trend-value-label {
-  fill: var(--text);
+  fill: var(--ink);
   font-size: 13px;
   font-weight: 700;
 }
 
-.trend-crosshair {
-  stroke: var(--muted);
+.trend-baseline {
+  stroke: var(--line-strong);
   stroke-width: 1;
-  opacity: 0.4;
+}
+
+.trend-crosshair {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
 }
 
 .trend-tooltip {
   position: absolute;
   transform: translate(-50%, -130%);
-  background: var(--text);
-  color: white;
+  background: var(--surface-inv);
+  color: var(--ink-inv);
   padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 0.8rem;
+  border-radius: var(--r-sm);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  box-shadow: var(--shadow);
+  gap: 1px;
+  box-shadow: var(--shadow-pop);
+  z-index: 2;
 }
 
 .trend-tooltip span {
-  color: #cbd5e1;
-  font-size: 0.72rem;
+  opacity: 0.68;
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
 }
 
-.trend-table {
-  width: 100%;
-  border-collapse: collapse;
+/* ==========================================================================
+   Kort-varianter i markedsanalysen
+   ========================================================================== */
+
+.supplier-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.trend-table th,
-.trend-table td {
-  text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.9rem;
+.supplier-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-2);
 }
 
-.trend-table td:last-child,
-.trend-table th:last-child {
-  text-align: right;
+.score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--ink);
 }
+
+.score span {
+  color: var(--ink-3);
+  font-weight: 500;
+  font-size: 0.6875rem;
+}
+
+.score-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line-2);
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.score-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--info-mark);
+}
+
+/* ==========================================================================
+   Animationer
+   ========================================================================== */
+
+@keyframes sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes blip {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scan {
+  0% {
+    background-position: -45% 0;
+  }
+  100% {
+    background-position: 145% 0;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* ==========================================================================
+   Responsivt
+   ========================================================================== */
 
 @media (max-width: 1200px) {
   .two-one,
-  .three-col,
-  .filters-grid {
+  .three-col {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 768px) {
-  .page,
+@media (max-width: 860px) {
   .topbar-inner {
-    padding: 16px;
+    padding: var(--s3) var(--s4);
+    flex-wrap: wrap;
   }
 
-  .two-col {
+  .nav-switch button {
+    padding: 7px 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .page {
+    padding: var(--s4);
+    gap: var(--s4);
+  }
+
+  .card {
+    padding: var(--s5);
+  }
+
+  .two-col,
+  .filters-grid {
     grid-template-columns: 1fr;
   }
 
@@ -497,5 +1792,75 @@ select:focus {
 
   .align-right {
     text-align: left;
+  }
+
+  .section-header {
+    flex-direction: column;
+  }
+}
+
+/* ==========================================================================
+   Reduceret bevægelse — alt der blinker eller glider slukkes
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .skeleton::after {
+    display: none;
+  }
+
+  .working__dots i {
+    opacity: 0.7;
+  }
+}
+
+/* ==========================================================================
+   Print — et opslag ender ofte i udbudsmaterialet som bilag
+   ========================================================================== */
+
+@media print {
+  :root,
+  :root[data-theme="dark"] {
+    color-scheme: light;
+    --plane: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --surface-3: #ffffff;
+    --ink: #000000;
+    --ink-2: #333333;
+    --ink-3: #555555;
+    --line: #cccccc;
+    --line-2: #999999;
+    --shadow-1: none;
+    --shadow-2: none;
+  }
+
+  body::before,
+  .topbar,
+  .btn,
+  .seg,
+  .icon-button {
+    display: none !important;
+  }
+
+  .card {
+    break-inside: avoid;
+    border: 1px solid #cccccc;
+  }
+
+  .reveal {
+    grid-template-rows: 1fr !important;
+  }
+
+  .reveal__body {
+    opacity: 1 !important;
+    transform: none !important;
   }
 }

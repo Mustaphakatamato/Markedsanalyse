@@ -7,6 +7,11 @@ import { getESGProfile } from "../services/esgService";
 import { checkSanctions } from "../services/sanctionsService";
 import { getIndustryBenchmark, pickClosestBenchmarkYear } from "../services/industryBenchmarkService";
 import TrendChart from "../components/charts/TrendChart";
+import Icon from "../components/ui/Icon";
+import SourceBadge from "../components/ui/SourceBadge";
+import StatusChip from "../components/ui/StatusChip";
+import ConfidenceMeter from "../components/ui/ConfidenceMeter";
+import { Working, SkeletonRows, OpChip } from "../components/ui/Loading";
 
 // Rækkefølgen her er også rækkefølgen knapperne vises i under grafen.
 const METRIC_DEFS = [
@@ -55,6 +60,26 @@ function formatDanishDate(isoDate) {
   if (!isoDate) return null;
   const d = new Date(isoDate);
   return Number.isNaN(d.getTime()) ? isoDate : d.toLocaleDateString("da-DK");
+}
+
+function formatAmount(value, currency) {
+  return value != null ? `${value.toLocaleString("da-DK")} ${currency || ""}`.trim() : "Ikke oplyst";
+}
+
+// Beløb, procenter og datoer sættes i tabularnumre, så kolonner flugter
+// lodret når man scanner ned gennem nøgletallene.
+function Figure({ children, tone }) {
+  const toneClass = tone ? ` metric__value--${tone}` : "";
+  return <span className={`metric__value num${toneClass}`}>{children}</span>;
+}
+
+function MetricRow({ label, value, tone }) {
+  return (
+    <div className="metric">
+      <span className="metric__label">{label}</span>
+      <Figure tone={tone}>{value}</Figure>
+    </div>
+  );
 }
 
 export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
@@ -344,13 +369,32 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
       ? Number(((financials.result / financials.topline) * 100).toFixed(1))
       : null;
 
+  // Samme regel som før — kun oversat til en tone, så vurderingen kan vises
+  // som en status og ikke bare som en tekststreng.
+  const riskVerdict = (() => {
+    if (sanctions?.match || company?.creditRemark) return { label: "Kræver afklaring", tone: "alert" };
+    if (financials.status === "ok" && financials.solvencyPct != null) {
+      if (financials.solvencyPct >= 30) return { label: "God soliditet", tone: "ok" };
+      if (financials.solvencyPct >= 15) return { label: "Middel soliditet", tone: "warn" };
+      return { label: "Lav soliditet", tone: "alert" };
+    }
+    return { label: "Utilstrækkelig data", tone: "neutral" };
+  })();
+
+  const sanctionsVerdict = sanctions?.match
+    ? { label: "Match fundet", tone: "alert" }
+    : sanctions?.fund?.length
+      ? { label: "Muligt match — kræver verifikation", tone: "warn" }
+      : { label: "Intet match", tone: "ok" };
+
   return (
     <main className="page">
       <section className="card">
         <div className="section-header">
           <div>
+            <p className="eyebrow">Due diligence</p>
             <h3>Virksomhedsopslag</h3>
-            <p className="muted">
+            <p className="lede">
               Slå en virksomhed op på navn eller CVR-nummer og få ét samlet billede: CVR-stamdata,
               vundne EU-udbud (TED), økonomi og ESG.
             </p>
@@ -358,34 +402,38 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
         </div>
 
         <div className="filters-grid">
-          <div style={{ gridColumn: "1 / -1", position: "relative" }} ref={searchBoxRef}>
-            <label>Firmanavn eller CVR-nummer</label>
-            <input
-              className="input"
-              placeholder="Fx Netcompany eller 25511484"
-              value={query}
-              autoComplete="off"
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setSuggestionsOpen(true);
-              }}
-              onFocus={() => suggestions.length > 0 && setSuggestionsOpen(true)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setSuggestionsOpen(false);
-                  runSearch(query);
-                } else if (e.key === "Escape") {
-                  setSuggestionsOpen(false);
-                }
-              }}
-            />
+          <div className="search-field" ref={searchBoxRef}>
+            <label htmlFor="company-query">Firmanavn eller CVR-nummer</label>
+            <div className="search-field__control">
+              <Icon name="search" size={16} className="search-field__icon" />
+              <input
+                id="company-query"
+                className="input"
+                placeholder="Fx Netcompany eller 25511484"
+                value={query}
+                autoComplete="off"
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setSuggestionsOpen(true);
+                }}
+                onFocus={() => suggestions.length > 0 && setSuggestionsOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setSuggestionsOpen(false);
+                    runSearch(query);
+                  } else if (e.key === "Escape") {
+                    setSuggestionsOpen(false);
+                  }
+                }}
+              />
+            </div>
             {suggestionsOpen && suggestions.length > 0 && (
               <ul className="suggestions-list">
                 {suggestions.map((kandidat) => (
                   <li key={kandidat.cvr}>
                     <button type="button" onClick={() => pickSuggestion(kandidat)}>
                       <span>{kandidat.navn}</span>
-                      <span className="muted small">CVR {kandidat.cvr}</span>
+                      <span>CVR {kandidat.cvr}</span>
                     </button>
                   </li>
                 ))}
@@ -401,14 +449,37 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
               }}
               disabled={status === "loading" || !query.trim()}
             >
-              {status === "loading" ? "Slår op…" : "Slå op"}
+              {status === "loading" ? (
+                <Working>Slår op…</Working>
+              ) : (
+                <>
+                  <Icon name="search" size={14} />
+                  Slå op
+                </>
+              )}
             </button>
+          </div>
+        </div>
+
+        <div className="card-foot">
+          <span className="eyebrow" style={{ margin: 0 }}>
+            Kilder
+          </span>
+          <div className="source-row">
+            <SourceBadge source="cvr" />
+            <SourceBadge source="erst" />
+            <SourceBadge source="ted" />
+            <SourceBadge source="dst" />
+            <SourceBadge source="eu" />
           </div>
         </div>
       </section>
 
       {(status === "not_found" || status === "error") && (
         <section className="empty-state">
+          <span className="empty-state__icon">
+            <Icon name="inbox" size={22} />
+          </span>
           <h4>Ingen resultat</h4>
           <p className="muted">{message}</p>
         </section>
@@ -419,8 +490,9 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
           <div className="section-header">
             <div>
               <h3>{candidates.length} virksomheder matcher</h3>
-              <p className="muted">Vælg den du vil se profilen for.</p>
+              <p className="muted small">Vælg den du vil se profilen for.</p>
             </div>
+            <SourceBadge source="cvr" label="Navneindeks" />
           </div>
 
           <div className="stack">
@@ -429,10 +501,11 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                 <div className="space-between mobile-stack">
                   <div>
                     <strong>{kandidat.navn}</strong>
-                    <p className="muted small">CVR {kandidat.cvr}</p>
+                    <p className="muted small mono">CVR {kandidat.cvr}</p>
                   </div>
                   <button className="btn btn-secondary btn-sm" onClick={() => loadCompany(kandidat.cvr)}>
-                    Se profil →
+                    Se profil
+                    <Icon name="arrow" size={13} />
                   </button>
                 </div>
               </div>
@@ -446,17 +519,28 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
           <section className="card">
             <div className="space-between mobile-stack">
               <div>
-                <p className="eyebrow">CVR-stamdata · rigtig data</p>
+                <p className="eyebrow">CVR-stamdata</p>
                 <h2 className="hero-title-sm">{company.name}</h2>
-                <p className="muted">{company.fullAddress || "Adresse ikke oplyst"}</p>
+                <p className="muted small">{company.fullAddress || "Adresse ikke oplyst"}</p>
               </div>
-              <span className={`pill ${company.active && !company.creditRemark ? "pill-ok" : "pill-warn"}`}>
-                {!company.active ? "Ophørt" : company.creditRemark ? company.creditRemark.type : "Aktiv"}
-              </span>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <SourceBadge source="cvr" />
+                <StatusChip
+                  tone={company.active && !company.creditRemark ? "ok" : "alert"}
+                  size="lg"
+                >
+                  {!company.active ? "Ophørt" : company.creditRemark ? company.creditRemark.type : "Aktiv"}
+                </StatusChip>
+              </div>
             </div>
 
             <div className="tag-row">
-              {company.cvr && <span className="tag">CVR {company.cvr}</span>}
+              {company.cvr && (
+                <span className="tag tag--code">
+                  <span className="tag__key">CVR</span>
+                  {company.cvr}
+                </span>
+              )}
               {company.companyType && <span className="tag">{company.companyType}</span>}
               {company.industryDesc && <span className="tag">{company.industryDesc}</span>}
               {company.employeesRange && <span className="tag">{company.employeesRange} ansatte</span>}
@@ -470,20 +554,17 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
           </section>
 
           <section className="grid three-col">
-            <div className="card">
+            <div className={`card ${financialsLoading ? "is-working" : ""}`}>
               <div className="space-between">
                 <h3>Økonomi &amp; nøgletal</h3>
-                {financials.status === "ok" ? (
-                  <span className="pill pill-ok">Rigtig data</span>
-                ) : (
-                  <span className="pill">Erhvervsstyrelsen</span>
-                )}
+                <SourceBadge source="erst" label="Erhvervsstyrelsen" />
               </div>
 
               {fiscalYears.length > 0 && (
                 <select
                   className="input"
                   style={{ marginBottom: 12 }}
+                  aria-label="Regnskabsår"
                   value={selectedYearIndex}
                   disabled={financialsLoading}
                   onChange={(e) => handleYearChange(Number(e.target.value))}
@@ -497,41 +578,36 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
               )}
 
               {financialsLoading && (
-                <p className="muted small">Henter regnskabsdata (kan tage lidt tid)…</p>
+                <>
+                  <Working>Henter regnskabsdata (kan tage lidt tid)…</Working>
+                  <div style={{ marginTop: 14 }}>
+                    <SkeletonRows rows={6} />
+                  </div>
+                </>
               )}
 
               {!financialsLoading && financials.status === "ok" && (
-                <div className="stack text-sm">
-                  <div className="space-between">
-                    <span>{financials.toplineLabel || "Omsætning/bruttofortjeneste"}</span>
-                    <strong>{formatDkkMio(financials.topline)}</strong>
-                  </div>
-                  <div className="space-between">
-                    <span>Årets resultat</span>
-                    <strong>{formatDkkMio(financials.result)}</strong>
-                  </div>
-                  <div className="space-between">
-                    <span>Resultat sidste år</span>
-                    <strong>{formatDkkMio(financials.priorYearResult)}</strong>
-                  </div>
-                  <div className="space-between">
-                    <span>Egenkapital</span>
-                    <strong>{formatDkkMio(financials.equity)}</strong>
-                  </div>
-                  <div className="space-between">
-                    <span>Balancesum</span>
-                    <strong>{formatDkkMio(financials.assets)}</strong>
-                  </div>
-                  <div className="space-between">
-                    <span>Soliditetsgrad</span>
-                    <strong>{formatPercent(financials.solvencyPct)}</strong>
+                <>
+                  <div className="metrics">
+                    <MetricRow
+                      label={financials.toplineLabel || "Omsætning/bruttofortjeneste"}
+                      value={formatDkkMio(financials.topline)}
+                    />
+                    <MetricRow label="Årets resultat" value={formatDkkMio(financials.result)} />
+                    <MetricRow label="Resultat sidste år" value={formatDkkMio(financials.priorYearResult)} />
+                    <MetricRow label="Egenkapital" value={formatDkkMio(financials.equity)} />
+                    <MetricRow label="Balancesum" value={formatDkkMio(financials.assets)} />
+                    <MetricRow label="Soliditetsgrad" value={formatPercent(financials.solvencyPct)} />
                   </div>
                   {financials.sourceUrl && (
-                    <a href={financials.sourceUrl} target="_blank" rel="noreferrer">
-                      Kilde: Regnskab {formatDate(financials.fiscalYearEnd).slice(0, 4)} →
-                    </a>
+                    <div className="card-foot">
+                      <a href={financials.sourceUrl} target="_blank" rel="noreferrer" className="small">
+                        Kilde: Regnskab {formatDate(financials.fiscalYearEnd).slice(0, 4)}{" "}
+                        <Icon name="external" size={12} style={{ display: "inline", verticalAlign: "-1px" }} />
+                      </a>
+                    </div>
                   )}
-                </div>
+                </>
               )}
 
               {!financialsLoading && financials.status === "facts_unavailable" && (
@@ -541,8 +617,9 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                     virksomheden filer via ESEF/IFRS-format).
                   </p>
                   {financials.sourceUrl && (
-                    <a href={financials.sourceUrl} target="_blank" rel="noreferrer">
-                      Se det indberettede regnskab →
+                    <a href={financials.sourceUrl} target="_blank" rel="noreferrer" className="small">
+                      Se det indberettede regnskab{" "}
+                      <Icon name="external" size={12} style={{ display: "inline", verticalAlign: "-1px" }} />
                     </a>
                   )}
                 </div>
@@ -557,143 +634,180 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
               )}
             </div>
 
-            <div className="card">
-              <h3>ESG &amp; compliance</h3>
-              <div className="stack text-sm">
-                <div className="space-between">
-                  <span>EU-sanktionstjek</span>
-                  <strong className={sanctions?.fund?.length ? "text-danger" : "text-ok"}>
-                    {sanctionsLoading
-                      ? "Tjekker…"
-                      : sanctions?.match
-                        ? "Match fundet"
-                        : sanctions?.fund?.length
-                          ? "Muligt match — kræver verifikation"
-                          : "Intet match"}
-                  </strong>
-                </div>
-                {sanctions?.fund?.length > 0 && (
-                  <p className="muted small">
-                    {sanctions.match ? "Ramt: " : "Enkeltord-match, sandsynligvis tilfældigt: "}
-                    {sanctions.fund.map((f) => `${f.navn} (${f.programme || "ukendt regime"})`).join(", ")}
-                  </p>
-                )}
-                <p className="muted small">
-                  Kilde: EU's konsoliderede sanktionsliste · eksakt navnematch — stavevarianter og
-                  translitterationer kan derfor undslippe. Korte enkeltords-match (fx et fornavn der
-                  også er alias for en udpeget person) flager som "kræver verifikation", ikke som et
-                  sikkert match.
-                </p>
+            <div className={`card ${sanctionsLoading ? "is-working" : ""}`}>
+              <div className="space-between">
+                <h3>ESG &amp; compliance</h3>
+                <SourceBadge source="eu" label="Sanktionsliste" />
+              </div>
 
-                <div className="space-between">
-                  <span>
-                    CSR-rapport indsendt <span className="pill pill-mock">Demo</span>
-                  </span>
-                  <strong>
-                    {esg.csrReportFiled ? `Ja (${esg.csrReportYear})` : "Nej"}
-                  </strong>
+              <p className="eyebrow" style={{ marginTop: 14 }}>
+                EU-sanktionstjek
+              </p>
+
+              {sanctionsLoading ? (
+                <div className="verdict">
+                  <Working>Tjekker mod EU's sanktionsliste…</Working>
                 </div>
-                <div className="space-between">
-                  <span>
-                    Klimarapportering <span className="pill pill-mock">Demo</span>
+              ) : (
+                <div
+                  className={`verdict${
+                    sanctionsVerdict.tone !== "neutral" ? ` verdict--${sanctionsVerdict.tone}` : ""
+                  }`}
+                >
+                  <span className="verdict__icon">
+                    <Icon name={sanctionsVerdict.tone === "ok" ? "shield" : "alert"} size={18} />
                   </span>
-                  <strong>{esg.climateReporting ? "Ja" : "Nej"}</strong>
+                  <div className="verdict__body">
+                    <p className="verdict__label">Resultat</p>
+                    <p className="verdict__value">{sanctionsVerdict.label}</p>
+                  </div>
                 </div>
-                <div className="space-between">
-                  <span>
-                    Whistleblowerordning <span className="pill pill-mock">Demo</span>
-                  </span>
-                  <strong>{esg.whistleblowerScheme ? "Ja" : "Nej"}</strong>
+              )}
+
+              {sanctions?.fund?.length > 0 && (
+                <div className="stack stack-tight" style={{ marginTop: 12 }}>
+                  <p className="small muted" style={{ margin: 0 }}>
+                    {sanctions.match ? "Ramt:" : "Enkeltord-match, sandsynligvis tilfældigt:"}
+                  </p>
+                  {sanctions.fund.map((f, i) => (
+                    <div className="subcard" key={`${f.navn}-${i}`}>
+                      <div className="space-between mobile-stack">
+                        <div>
+                          <strong className="small">{f.navn}</strong>
+                          <p className="muted small" style={{ margin: 0 }}>
+                            {f.programme || "ukendt regime"}
+                            {f.type ? ` · ${f.type}` : ""}
+                          </p>
+                        </div>
+                        <ConfidenceMeter level={f.confidence} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <ul className="trace" style={{ marginTop: 14 }}>
+                <li>
+                  <strong>Kilde:</strong> EU's konsoliderede sanktionsliste · eksakt navnematch
+                </li>
+                <li>Stavevarianter og translitterationer kan derfor undslippe.</li>
+                <li>
+                  Korte enkeltords-match (fx et fornavn der også er alias for en udpeget person)
+                  flager som "kræver verifikation", ikke som et sikkert match.
+                </li>
+              </ul>
+
+              <div className="card-foot" style={{ display: "block" }}>
+                <div className="space-between" style={{ marginBottom: 10 }}>
+                  <p className="eyebrow" style={{ margin: 0 }}>
+                    ESG-rapportering
+                  </p>
+                  <SourceBadge source="demo" label="Fabrikeret demo-data" />
+                </div>
+                <div className="metrics">
+                  <MetricRow
+                    label="CSR-rapport indsendt"
+                    value={esg.csrReportFiled ? `Ja (${esg.csrReportYear})` : "Nej"}
+                  />
+                  <MetricRow label="Klimarapportering" value={esg.climateReporting ? "Ja" : "Nej"} />
+                  <MetricRow label="Whistleblowerordning" value={esg.whistleblowerScheme ? "Ja" : "Nej"} />
                 </div>
               </div>
             </div>
 
             <div className="card">
-              <h3>Risikoprofil</h3>
-              <div className="stack text-sm">
-                <div className="space-between">
-                  <span>Samlet vurdering</span>
-                  <strong>
-                    {sanctions?.match || company.creditRemark
-                      ? "Kræver afklaring"
-                      : financials.status === "ok" && financials.solvencyPct != null
-                        ? financials.solvencyPct >= 30
-                          ? "God soliditet"
-                          : financials.solvencyPct >= 15
-                            ? "Middel soliditet"
-                            : "Lav soliditet"
-                        : "Utilstrækkelig data"}
-                  </strong>
-                </div>
+              <div className="space-between">
+                <h3>Risikoprofil</h3>
+                <SourceBadge source="dst" label="Branchetal" />
+              </div>
 
+              <div
+                className={`verdict${riskVerdict.tone !== "neutral" ? ` verdict--${riskVerdict.tone}` : ""}`}
+                style={{ marginTop: 12 }}
+              >
+                <span className="verdict__icon">
+                  <Icon name={riskVerdict.tone === "ok" ? "check" : riskVerdict.tone === "neutral" ? "info" : "alert"} size={18} />
+                </span>
+                <div className="verdict__body">
+                  <p className="verdict__label">Samlet vurdering</p>
+                  <p className="verdict__value">{riskVerdict.label}</p>
+                </div>
+              </div>
+
+              <div className="metrics" style={{ marginTop: 6 }}>
                 {company.creditRemark && (
-                  <div className="space-between">
-                    <span>Virksomhedsstatus (CVR)</span>
-                    <strong className="text-danger">{formatCreditRemark(company.creditRemark)}</strong>
-                  </div>
+                  <MetricRow
+                    label="Virksomhedsstatus (CVR)"
+                    value={formatCreditRemark(company.creditRemark)}
+                    tone="alert"
+                  />
                 )}
 
                 {benchmark?.solvencyPct != null && financials.solvencyPct != null && (
-                  <div className="space-between">
-                    <span>Soliditet vs. branche</span>
-                    <strong className={financials.solvencyPct >= benchmark.solvencyPct ? "text-ok" : "text-danger"}>
-                      {formatPercent(financials.solvencyPct)} vs. {formatPercent(benchmark.solvencyPct)}
-                    </strong>
-                  </div>
+                  <MetricRow
+                    label="Soliditet vs. branche"
+                    value={`${formatPercent(financials.solvencyPct)} vs. ${formatPercent(benchmark.solvencyPct)}`}
+                    tone={financials.solvencyPct >= benchmark.solvencyPct ? "ok" : "alert"}
+                  />
                 )}
 
                 {benchmark?.profitMarginPct != null && companyProfitMarginPct != null && (
-                  <div className="space-between">
-                    <span>Overskudsgrad vs. branche</span>
-                    <strong
-                      className={companyProfitMarginPct >= benchmark.profitMarginPct ? "text-ok" : "text-danger"}
-                    >
-                      {formatPercent(companyProfitMarginPct)} vs. {formatPercent(benchmark.profitMarginPct)}
-                    </strong>
-                  </div>
+                  <MetricRow
+                    label="Overskudsgrad vs. branche"
+                    value={`${formatPercent(companyProfitMarginPct)} vs. ${formatPercent(
+                      benchmark.profitMarginPct
+                    )}`}
+                    tone={companyProfitMarginPct >= benchmark.profitMarginPct ? "ok" : "alert"}
+                  />
                 )}
-
-                {profitMarginNotMeaningful && (
-                  <p className="muted small">
-                    Overskudsgrad ikke vist — {financials.toplineLabel || "topline"} (
-                    {formatDkkMio(financials.topline)}) er for lille i forhold til årets resultat til at udgøre et
-                    meningsfuldt nøgletal. Typisk et holdingselskab uden reelle driftsindtægter.
-                  </p>
-                )}
-
-                {benchmark && (
-                  <p className="muted small">
-                    Branchegennemsnit: {benchmark.sectorLabel}, {benchmark.year} · Kilde: Danmarks Statistik
-                  </p>
-                )}
-
-                <p className="muted small">
-                  Baseret på soliditetsgrad (egenkapital/balancesum) fra regnskabet og
-                  sanktionstjek. Kombinér altid med en konkret vurdering af den enkelte opgave.
-                </p>
               </div>
+
+              {profitMarginNotMeaningful && (
+                <p className="muted small" style={{ marginTop: 12 }}>
+                  Overskudsgrad ikke vist — {financials.toplineLabel || "topline"} (
+                  {formatDkkMio(financials.topline)}) er for lille i forhold til årets resultat til at udgøre et
+                  meningsfuldt nøgletal. Typisk et holdingselskab uden reelle driftsindtægter.
+                </p>
+              )}
+
+              <ul className="trace" style={{ marginTop: 14 }}>
+                {benchmark && (
+                  <li>
+                    <strong>Branchegennemsnit:</strong> {benchmark.sectorLabel}, {benchmark.year} · Kilde:
+                    Danmarks Statistik
+                  </li>
+                )}
+                <li>
+                  Baseret på soliditetsgrad (egenkapital/balancesum) fra regnskabet og sanktionstjek.
+                  Kombinér altid med en konkret vurdering af den enkelte opgave.
+                </li>
+              </ul>
             </div>
           </section>
 
-          <section className="card">
+          <section className={`card ${trendLoading ? "is-working" : ""}`}>
             <div className="section-header">
               <div>
                 <h3>Udvikling over tid</h3>
-                <p className="muted">
+                <p className="muted small">
                   {fiscalYears.length > 1
                     ? `Nøgletal for de seneste ${fiscalYears.length} regnskabsår, fra Erhvervsstyrelsen.`
                     : "Kun ét regnskabsår fundet — ikke nok til en udviklingsgraf."}
                 </p>
               </div>
-              {!trendExpanded && fiscalYears.length > 1 && (
-                <button className="btn btn-secondary" onClick={loadTrend}>
-                  Vis udvikling
-                </button>
-              )}
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <SourceBadge source="erst" label="Erhvervsstyrelsen" />
+                {!trendExpanded && fiscalYears.length > 1 && (
+                  <button className="btn btn-secondary btn-sm" onClick={loadTrend}>
+                    <Icon name="trend" size={14} />
+                    Vis udvikling
+                  </button>
+                )}
+              </div>
             </div>
 
             {trendExpanded && trendLoading && (
-              <p className="muted small">Henter {fiscalYears.length} års regnskaber…</p>
+              <Working>Henter {fiscalYears.length} års regnskaber…</Working>
             )}
 
             {trendExpanded && !trendLoading && trendError && (
@@ -704,6 +818,9 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
 
             {trendExpanded && !trendLoading && !trendError && availableMetrics.length === 0 && (
               <div className="empty-state">
+                <span className="empty-state__icon">
+                  <Icon name="trend" size={22} />
+                </span>
                 <h4>Ingen nøgletal at vise udvikling for</h4>
                 <p className="muted">
                   Ingen af de fundne regnskabsår havde nøgletal der kunne udtrækkes automatisk.
@@ -713,21 +830,22 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
 
             {trendExpanded && !trendLoading && !trendError && availableMetrics.length > 0 && (
               <>
-                <div className="button-row" style={{ marginBottom: 16 }}>
-                  {availableMetrics.map((def) => (
-                    <button
-                      key={def.key}
-                      className={`nav-button ${selectedMetric === def.key ? "active" : ""}`}
-                      onClick={() => setSelectedMetric(def.key)}
-                    >
-                      {def.label}
-                    </button>
-                  ))}
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => setTrendAsTable((v) => !v)}
-                  >
+                <div className="space-between mobile-stack" style={{ marginBottom: 18, alignItems: "center" }}>
+                  <div className="seg">
+                    {availableMetrics.map((def) => (
+                      <button
+                        key={def.key}
+                        type="button"
+                        className={`nav-button ${selectedMetric === def.key ? "active" : ""}`}
+                        aria-pressed={selectedMetric === def.key}
+                        onClick={() => setSelectedMetric(def.key)}
+                      >
+                        {def.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setTrendAsTable((v) => !v)}>
+                    <Icon name={trendAsTable ? "trend" : "table"} size={14} />
                     {trendAsTable ? "Vis som graf" : "Vis som tabel"}
                   </button>
                 </div>
@@ -741,8 +859,8 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                     formatValue={formatMetricValue}
                   />
                 ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table className="trend-table">
+                  <div className="scroll-x">
+                    <table className="data-table">
                       <thead>
                         <tr>
                           <th>Regnskabsår</th>
@@ -754,7 +872,7 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                           const value = d.financials?.status === "ok" ? d.financials[selectedMetric] : null;
                           return (
                             <tr key={d.entry.fiscalYearEnd}>
-                              <td>{d.entry.fiscalYearEnd.slice(0, 4)}</td>
+                              <td className="mono">{d.entry.fiscalYearEnd.slice(0, 4)}</td>
                               <td>{value != null ? formatMetricValue(value) : "–"}</td>
                             </tr>
                           );
@@ -767,28 +885,45 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
             )}
           </section>
 
-          <section className="card">
+          <section className={`card ${contractsLoading ? "is-working" : ""}`}>
             <div className="section-header">
               <div>
                 <h3>Vundne udbud (TED)</h3>
-                <p className="muted">
-                  {contractsLoading
-                    ? "Henter…"
-                    : `${contracts.total} kontrakt${contracts.total === 1 ? "" : "er"} fundet i TED${
-                        totalContractValueDkk > 0
-                          ? ` · samlet ${formatDkkMio(totalContractValueDkk)} (enkeltkontrakter i DKK)`
-                          : ""
-                      }${
-                        multiWinnerCount > 0
-                          ? ` · ${multiWinnerCount} rammeaftale${
-                              multiWinnerCount === 1 ? "" : "r"
-                            } med flere vindere ikke talt med — se enkeltbeløb under "Se detaljer"`
-                          : ""
-                      }`}
+                <p className="muted small">
+                  Kontrakttildelinger hvor virksomheden står som vinder i EU's udbudsdatabase.
                 </p>
               </div>
-              <span className="pill">Rigtig data</span>
+              <SourceBadge source="ted" />
             </div>
+
+            {contractsLoading ? (
+              <SkeletonRows rows={4} />
+            ) : (
+              <div className="grid three-col" style={{ gap: 12, marginBottom: 18 }}>
+                <div className="stat">
+                  <p className="stat__label">Kontrakter i TED</p>
+                  <span className="stat__value stat__value--big">{contracts.total}</span>
+                </div>
+                <div className="stat">
+                  <p className="stat__label">Samlet værdi</p>
+                  <span className="stat__value stat__value--big">
+                    {totalContractValueDkk > 0 ? formatDkkMio(totalContractValueDkk) : "–"}
+                  </span>
+                  <p className="muted small" style={{ margin: "2px 0 0" }}>
+                    enkeltkontrakter i DKK
+                  </p>
+                </div>
+                <div className="stat">
+                  <p className="stat__label">Rammeaftaler</p>
+                  <span className="stat__value stat__value--big">{multiWinnerCount}</span>
+                  <p className="muted small" style={{ margin: "2px 0 0" }}>
+                    {multiWinnerCount > 0
+                      ? 'med flere vindere — ikke talt med, se enkeltbeløb under "Se detaljer"'
+                      : "ingen med flere vindere"}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {contractsError && (
               <div className="empty-state">
@@ -798,6 +933,9 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
 
             {!contractsLoading && !contractsError && contracts.notices.length === 0 && (
               <div className="empty-state">
+                <span className="empty-state__icon">
+                  <Icon name="scales" size={22} />
+                </span>
                 <h4>Ingen kontrakter fundet</h4>
                 <p className="muted">
                   TED dækker kun udbud over EU's tærskelværdi — mindre danske kontrakter kan findes
@@ -812,43 +950,64 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                 const expanded = expandedNoticeId === notice.id;
 
                 return (
-                  <div className="subcard" key={notice.id}>
+                  <div className={`subcard ${expanded ? "is-open" : ""}`} key={notice.id}>
                     <div className="space-between mobile-stack">
-                      <div>
+                      <div style={{ minWidth: 0 }}>
                         <strong>{notice.buyerName || "Ukendt ordregiver"}</strong>
-                        <p className="muted small">
-                          Type: {notice.noticeType || "–"} · Notice-nr.: {notice.publicationNumber || "–"}
-                        </p>
+                        <div className="tag-row" style={{ marginTop: 6 }}>
+                          <span className="tag">
+                            <span className="tag__key">Type</span>
+                            {notice.noticeType || "–"}
+                          </span>
+                          <span className="tag tag--code">
+                            <span className="tag__key">Notice</span>
+                            {notice.publicationNumber || "–"}
+                          </span>
+                          <span className="tag tag--code">
+                            <span className="tag__key">Dato</span>
+                            {formatDate(notice.date)}
+                          </span>
+                        </div>
                       </div>
-                      <div className="align-right">
+
+                      <div className="align-right" style={{ flex: "none" }}>
                         {notice.isMultiWinner ? (
                           <>
-                            <p className="muted small">
-                              Rammeaftale/DPS med {notice.winnerCount} vindere
-                            </p>
-                            <p className="small">
-                              Loftværdi:{" "}
-                              {notice.value != null
-                                ? `${notice.value.toLocaleString("da-DK")} ${notice.currency || ""}`
-                                : "Ikke oplyst"}
-                            </p>
+                            <p className="stat__label">Loftværdi</p>
+                            <span className="stat__value num">
+                              {formatAmount(notice.value, notice.currency)}
+                            </span>
+                            <div style={{ marginTop: 6 }}>
+                              <StatusChip tone="warn">
+                                Rammeaftale/DPS med {notice.winnerCount} vindere
+                              </StatusChip>
+                            </div>
                           </>
                         ) : (
-                          <p>
-                            Værdi:{" "}
-                            {notice.value != null
-                              ? `${notice.value.toLocaleString("da-DK")} ${notice.currency || ""}`
-                              : "Ikke oplyst"}
-                          </p>
+                          <>
+                            <p className="stat__label">Værdi</p>
+                            <span className="stat__value num">
+                              {formatAmount(notice.value, notice.currency)}
+                            </span>
+                          </>
                         )}
-                        <p>Dato: {formatDate(notice.date)}</p>
-                        <div className="button-row" style={{ justifyContent: "flex-end" }}>
+
+                        <div className="button-row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
                           {notice.publicationNumber && (
                             <button
                               type="button"
                               className="btn btn-sm btn-secondary"
+                              aria-expanded={expanded}
                               onClick={() => toggleNoticeDetail(notice)}
                             >
+                              <Icon
+                                name="chevron"
+                                size={13}
+                                style={{
+                                  transform: expanded ? "rotate(180deg)" : "none",
+                                  transition: "transform 0.24s ease"
+                                }}
+                              />
                               {expanded ? "Skjul detaljer" : "Se detaljer"}
                             </button>
                           )}
@@ -859,120 +1018,151 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                               rel="noreferrer"
                               className="btn btn-sm btn-secondary"
                             >
-                              Se notice →
+                              Se notice
+                              <Icon name="external" size={13} />
                             </a>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    {expanded && (
-                      <div className="stack inner-gap">
-                        {detail?.status === "loading" && (
-                          <p className="muted small">Henter detaljer fra TED's fulde notice…</p>
-                        )}
-                        {detail?.status === "error" && <p className="muted small">{detail.message}</p>}
-
-                        {detail?.status === "ok" && (
-                          <>
-                            {detail.data.title && (
-                              <div>
-                                <strong>{detail.data.title}</strong>
-                                {detail.data.description && (
-                                  <p className="muted small">
-                                    {detail.data.description.length > 600
-                                      ? `${detail.data.description.slice(0, 600)}…`
-                                      : detail.data.description}
-                                  </p>
-                                )}
+                    <div className={`reveal ${expanded ? "is-open" : ""}`}>
+                      <div className="reveal__inner">
+                        <div className="reveal__body">
+                          {detail?.status === "loading" && (
+                            <div className="stack stack-tight">
+                              <Working>Henter detaljer fra TED's fulde notice…</Working>
+                              <div className="row">
+                                <OpChip state="running">ted-notice · eForms-XML</OpChip>
+                                <OpChip state="running">join · Organisation → LotTender</OpChip>
                               </div>
-                            )}
-
-                            {detail.data.lots.length > 0 && (
-                              <div className="stack" style={{ gap: 10 }}>
-                                <p className="small" style={{ marginBottom: 0 }}>
-                                  <strong>Lots ({detail.data.lots.length})</strong>
-                                </p>
-                                {detail.data.lots.map((lot) => (
-                                  <div key={lot.id}>
-                                    <p className="small" style={{ marginBottom: 2 }}>
-                                      <strong>{lot.title || lot.id}</strong>
-                                    </p>
-                                    {lot.description && (
-                                      <p className="muted small">{lot.description}</p>
-                                    )}
-                                    {lot.cpvCodes.length > 0 && (
-                                      <div className="tag-row">
-                                        {lot.cpvCodes.map((cpv) => (
-                                          <span className="tag" key={cpv}>
-                                            {cpv}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
+                            </div>
+                          )}
+                          {detail?.status === "error" && (
+                            <div className="stack stack-tight">
+                              <div className="row">
+                                <OpChip state="failed">ted-notice · fejlede</OpChip>
                               </div>
-                            )}
+                              <p className="muted small" style={{ margin: 0 }}>
+                                {detail.message}
+                              </p>
+                            </div>
+                          )}
 
-                            {notice.isMultiWinner &&
-                              (detail.data.companyAwards.length > 0 ? (
+                          {detail?.status === "ok" && (
+                            <div className="stack">
+                              <div className="row">
+                                <OpChip state="done">ted-notice · fuld eForms-XML</OpChip>
+                              </div>
+
+                              {detail.data.title && (
                                 <div>
-                                  <p className="small">
-                                    <strong>{company?.name}</strong> har vundet følgende delkontrakter i
-                                    denne rammeaftale:
+                                  <strong className="text-sm">{detail.data.title}</strong>
+                                  {detail.data.description && (
+                                    <p className="muted small" style={{ margin: "4px 0 0" }}>
+                                      {detail.data.description.length > 600
+                                        ? `${detail.data.description.slice(0, 600)}…`
+                                        : detail.data.description}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {detail.data.lots.length > 0 && (
+                                <div className="stack stack-tight">
+                                  <p className="eyebrow" style={{ margin: 0 }}>
+                                    Lots ({detail.data.lots.length})
                                   </p>
-                                  <div style={{ overflowX: "auto" }}>
-                                    <table className="trend-table">
-                                      <thead>
-                                        <tr>
-                                          <th>Lot</th>
-                                          <th>Delkontrakt</th>
-                                          <th>Dato</th>
-                                          <th>Værdi</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {detail.data.companyAwards.map((award) => (
-                                          <tr key={award.tenderId}>
-                                            <td>{award.lotTitle || award.lotId || "–"}</td>
-                                            <td>{award.description || "–"}</td>
-                                            <td>{formatDate(award.awardDate)}</td>
+                                  {detail.data.lots.map((lot) => (
+                                    <div key={lot.id}>
+                                      <p className="small" style={{ margin: 0 }}>
+                                        <strong>{lot.title || lot.id}</strong>
+                                      </p>
+                                      {lot.description && (
+                                        <p className="muted small" style={{ margin: "2px 0 0" }}>
+                                          {lot.description}
+                                        </p>
+                                      )}
+                                      {lot.cpvCodes.length > 0 && (
+                                        <div className="tag-row" style={{ marginTop: 6 }}>
+                                          {lot.cpvCodes.map((cpv) => (
+                                            <span className="tag tag--code" key={cpv}>
+                                              {cpv}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {notice.isMultiWinner &&
+                                (detail.data.companyAwards.length > 0 ? (
+                                  <div>
+                                    <p className="small" style={{ marginTop: 0 }}>
+                                      <strong>{company?.name}</strong> har vundet følgende delkontrakter i
+                                      denne rammeaftale:
+                                    </p>
+                                    <div className="scroll-x">
+                                      <table className="data-table">
+                                        <thead>
+                                          <tr>
+                                            <th>Lot</th>
+                                            <th>Delkontrakt</th>
+                                            <th>Dato</th>
+                                            <th>Værdi</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {detail.data.companyAwards.map((award) => (
+                                            <tr key={award.tenderId}>
+                                              <td>{award.lotTitle || award.lotId || "–"}</td>
+                                              <td>{award.description || "–"}</td>
+                                              <td className="mono">{formatDate(award.awardDate)}</td>
+                                              <td>
+                                                {award.value != null
+                                                  ? `${award.value.toLocaleString("da-DK")} ${
+                                                      award.currency || ""
+                                                    }`
+                                                  : "–"}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                          <tr className="row-total">
+                                            <td colSpan={3}>
+                                              <strong>I alt</strong>
+                                            </td>
                                             <td>
-                                              {award.value != null
-                                                ? `${award.value.toLocaleString("da-DK")} ${
-                                                    award.currency || ""
-                                                  }`
-                                                : "–"}
+                                              <strong>
+                                                {detail.data.companyAwardsTotal.toLocaleString("da-DK")} DKK
+                                              </strong>
                                             </td>
                                           </tr>
-                                        ))}
-                                        <tr>
-                                          <td colSpan={3}>
-                                            <strong>I alt</strong>
-                                          </td>
-                                          <td>
-                                            <strong>
-                                              {detail.data.companyAwardsTotal.toLocaleString("da-DK")} DKK
-                                            </strong>
-                                          </td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    <ul className="trace" style={{ marginTop: 12 }}>
+                                      <li>
+                                        Beløbene er joinet på ID'er i notice'ens fulde eForms-XML
+                                        (Organisation → TenderingParty → LotTender), ikke gættet ud fra
+                                        rækkefølge.
+                                      </li>
+                                    </ul>
                                   </div>
-                                </div>
-                              ) : (
-                                <p className="muted small">
-                                  Kunne ikke finde specifikke delkontrakter for {company?.name} i
-                                  rammeaftalens XML — navnet kan afvige fra det TED har registreret som
-                                  vinder. Loftværdien ovenfor er IKKE et udtryk for hvad virksomheden
-                                  reelt har fået tildelt.
-                                </p>
-                              ))}
-                          </>
-                        )}
+                                ) : (
+                                  <p className="muted small">
+                                    Kunne ikke finde specifikke delkontrakter for {company?.name} i
+                                    rammeaftalens XML — navnet kan afvige fra det TED har registreret som
+                                    vinder. Loftværdien ovenfor er IKKE et udtryk for hvad virksomheden
+                                    reelt har fået tildelt.
+                                  </p>
+                                ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}

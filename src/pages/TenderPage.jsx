@@ -3,6 +3,9 @@ import { useProjects } from "../context/ProjectsContext";
 import { cpvOptions } from "../data/cpvOptions";
 import { suppliers, getRelevanceScore } from "../data/suppliers";
 import { searchByCPV } from "../services/tedService";
+import Icon from "../components/ui/Icon";
+import SourceBadge from "../components/ui/SourceBadge";
+import { Working, SkeletonRows } from "../components/ui/Loading";
 
 function formatDate(isoDate) {
   return isoDate ? isoDate.slice(0, 10) : "–";
@@ -30,17 +33,29 @@ function CreateProjectForm({ onCreate, onCancel }) {
 
   return (
     <section className="card">
-      <h3>Opret nyt udbud</h3>
+      <div className="section-header">
+        <div>
+          <p className="eyebrow">Nyt udbud</p>
+          <h3>Opret nyt udbud</h3>
+        </div>
+      </div>
+
       <div className="stack">
         <div>
-          <label>Titel</label>
-          <input className="input" value={form.title} onChange={update("title")} placeholder="Fx Drift af IT-infrastruktur 2027" />
+          <label htmlFor="tender-title">Titel</label>
+          <input
+            id="tender-title"
+            className="input"
+            value={form.title}
+            onChange={update("title")}
+            placeholder="Fx Drift af IT-infrastruktur 2027"
+          />
         </div>
 
-        <div className="grid two-col inner-gap">
+        <div className="grid two-col" style={{ gap: 16 }}>
           <div>
-            <label>CPV / marked</label>
-            <select className="input" value={form.cpvCode} onChange={update("cpvCode")}>
+            <label htmlFor="tender-cpv">CPV / marked</label>
+            <select id="tender-cpv" className="input" value={form.cpvCode} onChange={update("cpvCode")}>
               {cpvOptions.map((option) => (
                 <option key={option.code} value={option.code}>
                   {option.code} · {option.label}
@@ -49,14 +64,21 @@ function CreateProjectForm({ onCreate, onCancel }) {
             </select>
           </div>
           <div>
-            <label>Deadline</label>
-            <input className="input" type="date" value={form.deadline} onChange={update("deadline")} />
+            <label htmlFor="tender-deadline">Deadline</label>
+            <input
+              id="tender-deadline"
+              className="input"
+              type="date"
+              value={form.deadline}
+              onChange={update("deadline")}
+            />
           </div>
         </div>
 
         <div>
-          <label>Beskrivelse</label>
+          <label htmlFor="tender-description">Beskrivelse</label>
           <textarea
+            id="tender-description"
             className="textarea"
             value={form.description}
             onChange={update("description")}
@@ -65,8 +87,9 @@ function CreateProjectForm({ onCreate, onCancel }) {
         </div>
 
         <div>
-          <label>Anslået værdi (valgfri)</label>
+          <label htmlFor="tender-value">Anslået værdi (valgfri)</label>
           <input
+            id="tender-value"
             className="input"
             value={form.estimatedValue}
             onChange={update("estimatedValue")}
@@ -76,6 +99,7 @@ function CreateProjectForm({ onCreate, onCancel }) {
 
         <div className="button-row">
           <button className="btn btn-primary" onClick={submit} disabled={!form.title.trim()}>
+            <Icon name="spark" size={14} />
             Opret og lav markedsanalyse
           </button>
           <button className="btn btn-secondary" onClick={onCancel}>
@@ -126,64 +150,95 @@ function ProjectDetail({ project, onBack, onDelete, onGoToCompany }) {
           <div>
             <p className="eyebrow">Udbud</p>
             <h2 className="hero-title-sm">{project.title}</h2>
-            <p className="muted">{project.description || "Ingen beskrivelse"}</p>
+            <p className="lede">{project.description || "Ingen beskrivelse"}</p>
           </div>
           <div className="button-row">
-            <button className="btn btn-secondary" onClick={onBack}>
-              ← Alle udbud
+            <button className="btn btn-secondary btn-sm" onClick={onBack}>
+              <Icon name="back" size={13} />
+              Alle udbud
             </button>
-            <button className="btn btn-secondary" onClick={() => onDelete(project.id)}>
+            <button className="btn btn-ghost btn-sm" onClick={() => onDelete(project.id)}>
               Slet udbud
             </button>
           </div>
         </div>
 
         <div className="tag-row">
-          <span className="tag">{market.code}</span>
+          <span className="tag tag--code">
+            <span className="tag__key">CPV</span>
+            {market.code}
+          </span>
           <span className="tag">{market.label}</span>
-          {project.deadline && <span className="tag">Deadline {project.deadline}</span>}
-          {project.estimatedValue && <span className="tag">Anslået {project.estimatedValue}</span>}
+          {project.deadline && (
+            <span className="tag tag--code">
+              <span className="tag__key">Deadline</span>
+              {project.deadline}
+            </span>
+          )}
+          {project.estimatedValue && (
+            <span className="tag">
+              <span className="tag__key">Anslået</span>
+              {project.estimatedValue}
+            </span>
+          )}
         </div>
       </section>
 
       <section className="grid two-one">
         <div className="card">
-          <div className="space-between">
-            <h3>Markedsanalyse</h3>
-            <span className="pill">{market.code}</span>
+          <div className="section-header">
+            <div>
+              <h3>Markedsanalyse</h3>
+              <p className="muted small">Nøgletal for CPV-området {market.code}.</p>
+            </div>
+            <SourceBadge source="demo" label="Fabrikeret demo-data" />
           </div>
-          <div className="grid two-col inner-gap">
-            <div className="subcard">
-              <p className="small muted">Typisk kontraktstørrelse</p>
-              <strong>{market.avgContract}</strong>
+
+          <div className="grid two-col" style={{ gap: 12 }}>
+            <div className="stat">
+              <p className="stat__label">Typisk kontraktstørrelse</p>
+              <span className="stat__value">{market.avgContract}</span>
             </div>
-            <div className="subcard">
-              <p className="small muted">Markedsmodenhed</p>
-              <strong>{market.maturity}</strong>
+            <div className="stat">
+              <p className="stat__label">Markedsmodenhed</p>
+              <span className="stat__value">{market.maturity}</span>
             </div>
-            <div className="subcard">
-              <p className="small muted">Trend</p>
-              <strong>{market.trend}</strong>
+            <div className="stat">
+              <p className="stat__label">Trend</p>
+              <span className="stat__value">{market.trend}</span>
             </div>
-            <div className="subcard">
-              <p className="small muted">Kandidatleverandører</p>
-              <strong>{candidateSuppliers.length} fundet</strong>
+            <div className="stat">
+              <p className="stat__label">Kandidatleverandører</p>
+              <span className="stat__value">{candidateSuppliers.length} fundet</span>
             </div>
           </div>
         </div>
 
         <div className="card">
-          <h3>Kandidat-leverandører</h3>
+          <div className="section-header">
+            <h3>Kandidat-leverandører</h3>
+            <SourceBadge source="demo" label="Demo-data" />
+          </div>
+
           <div className="stack">
             {candidateSuppliers.map((supplier) => (
               <div className="subcard" key={supplier.id}>
                 <div className="space-between">
-                  <strong>{supplier.name}</strong>
-                  <span className="pill">{supplier.score}/10</span>
+                  <strong className="text-sm">{supplier.name}</strong>
+                  <span className="score">
+                    {supplier.score}
+                    <span>/10</span>
+                  </span>
                 </div>
-                <p className="muted small">{supplier.description}</p>
+                <div className="score-bar" aria-hidden="true">
+                  <i style={{ width: `${Math.max(0, Math.min(10, supplier.score)) * 10}%` }} />
+                </div>
+                <p className="muted small" style={{ margin: "10px 0 12px" }}>
+                  {supplier.description}
+                </p>
                 <button className="btn btn-secondary btn-sm" onClick={() => onGoToCompany(supplier.name)}>
-                  Se virksomhedsprofil →
+                  Se virksomhedsprofil
+                  <Icon name="arrow" size={13} />
                 </button>
               </div>
             ))}
@@ -191,14 +246,21 @@ function ProjectDetail({ project, onBack, onDelete, onGoToCompany }) {
         </div>
       </section>
 
-      <section className="card">
+      <section className={`card ${tedLoading ? "is-working" : ""}`}>
         <div className="section-header">
           <div>
             <h3>Seneste TED-kontrakter i dette marked</h3>
-            <p className="muted">Rigtige, nylige kontrakttildelinger inden for {market.label}.</p>
+            <p className="muted small">Rigtige, nylige kontrakttildelinger inden for {market.label}.</p>
           </div>
-          <span className="pill">Rigtig data</span>
+          <SourceBadge source="ted" />
         </div>
+
+        {tedLoading && (
+          <div className="stack">
+            <Working>Henter kontrakttildelinger fra TED…</Working>
+            <SkeletonRows rows={4} />
+          </div>
+        )}
 
         {tedError && (
           <div className="empty-state">
@@ -208,6 +270,9 @@ function ProjectDetail({ project, onBack, onDelete, onGoToCompany }) {
 
         {!tedLoading && !tedError && tedNotices.length === 0 && (
           <div className="empty-state">
+            <span className="empty-state__icon">
+              <Icon name="scales" size={22} />
+            </span>
             <h4>Ingen nylige kontrakter fundet for denne CPV-kode</h4>
           </div>
         )}
@@ -216,22 +281,38 @@ function ProjectDetail({ project, onBack, onDelete, onGoToCompany }) {
           {tedNotices.map((notice) => (
             <div className="subcard" key={notice.id}>
               <div className="space-between mobile-stack">
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <strong>{notice.winnerName || "Ukendt vinder"}</strong>
-                  <p className="muted small">Ordregiver: {notice.buyerName || "Ukendt"}</p>
+                  <div className="tag-row" style={{ marginTop: 6 }}>
+                    <span className="tag">
+                      <span className="tag__key">Ordregiver</span>
+                      {notice.buyerName || "Ukendt"}
+                    </span>
+                    <span className="tag tag--code">
+                      <span className="tag__key">Dato</span>
+                      {formatDate(notice.date)}
+                    </span>
+                  </div>
                 </div>
-                <div className="align-right">
-                  <p>
-                    Værdi:{" "}
+                <div className="align-right" style={{ flex: "none" }}>
+                  <p className="stat__label">Værdi</p>
+                  <span className="stat__value num">
                     {notice.value != null
-                      ? `${notice.value.toLocaleString("da-DK")} ${notice.currency || ""}`
+                      ? `${notice.value.toLocaleString("da-DK")} ${notice.currency || ""}`.trim()
                       : "Ikke oplyst"}
-                  </p>
-                  <p>Dato: {formatDate(notice.date)}</p>
+                  </span>
                   {notice.url && (
-                    <a href={notice.url} target="_blank" rel="noreferrer">
-                      Se notice →
-                    </a>
+                    <div className="button-row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+                      <a
+                        href={notice.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-sm btn-secondary"
+                      >
+                        Se notice
+                        <Icon name="external" size={13} />
+                      </a>
+                    </div>
                   )}
                 </div>
               </div>
@@ -269,17 +350,29 @@ export default function TenderPage({ onGoToCompany }) {
       <section className="card">
         <div className="section-header">
           <div>
+            <p className="eyebrow">Markedsbillede</p>
             <h3>Udbud &amp; markedsanalyse</h3>
-            <p className="muted">
+            <p className="lede">
               Opret et udbud og få en markedsanalyse: marked, kandidat-leverandører og reelle
               TED-referencer for det pågældende CPV-område.
             </p>
           </div>
           {mode === "list" && (
             <button className="btn btn-primary" onClick={() => setMode("create")}>
-              + Opret nyt udbud
+              <Icon name="plus" size={14} />
+              Opret nyt udbud
             </button>
           )}
+        </div>
+
+        <div className="card-foot">
+          <span className="eyebrow" style={{ margin: 0 }}>
+            Kilder
+          </span>
+          <div className="source-row">
+            <SourceBadge source="ted" />
+            <SourceBadge source="demo" label="Markedsnøgletal og kandidater" />
+          </div>
         </div>
       </section>
 
@@ -301,6 +394,9 @@ export default function TenderPage({ onGoToCompany }) {
         <section>
           {projects.length === 0 ? (
             <div className="empty-state">
+              <span className="empty-state__icon">
+                <Icon name="doc" size={22} />
+              </span>
               <h4>Ingen udbud oprettet endnu</h4>
               <p className="muted">Klik "Opret nyt udbud" for at komme i gang.</p>
             </div>
@@ -310,15 +406,25 @@ export default function TenderPage({ onGoToCompany }) {
                 const market = cpvOptions.find((c) => c.code === project.cpvCode);
                 return (
                   <div className="card supplier-card" key={project.id}>
-                    <h4>{project.title}</h4>
-                    <p className="muted">{project.description || "Ingen beskrivelse"}</p>
-                    <div className="tag-row">
-                      <span className="tag">{market?.label || project.cpvCode}</span>
-                      {project.deadline && <span className="tag">Deadline {project.deadline}</span>}
+                    <div>
+                      <h4>{project.title}</h4>
+                      <p className="muted small" style={{ margin: 0 }}>
+                        {project.description || "Ingen beskrivelse"}
+                      </p>
                     </div>
-                    <div className="button-row">
-                      <button className="btn btn-primary" onClick={() => setSelectedId(project.id)}>
+                    <div className="tag-row" style={{ margin: 0 }}>
+                      <span className="tag">{market?.label || project.cpvCode}</span>
+                      {project.deadline && (
+                        <span className="tag tag--code">
+                          <span className="tag__key">Deadline</span>
+                          {project.deadline}
+                        </span>
+                      )}
+                    </div>
+                    <div className="button-row" style={{ marginTop: "auto" }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => setSelectedId(project.id)}>
                         Åbn markedsanalyse
+                        <Icon name="arrow" size={13} />
                       </button>
                     </div>
                   </div>
