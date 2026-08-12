@@ -1,8 +1,8 @@
-// AI-drevet Go/No-Go-vurdering og spørgsmålsgenerering — kører på Groqs
-// gratis tier (openai/gpt-oss-120b til vurderingen, llama-3.1-8b-instant til
-// spørgsmål), server-side via Edge Functions (bid-gonogo/bid-questions),
-// aldrig direkte fra browseren. Se supabase/functions/_shared/groq.ts for
-// selve API-kaldet og den fulde begrundelse for modelvalg.
+// AI-drevet Go/No-Go-vurdering, spørgsmålsgenerering og kravbesvarelses-
+// udkast — kører på Groqs gratis tier (openai/gpt-oss-120b), server-side via
+// Edge Functions (bid-gonogo/bid-questions/bid-answer-draft), aldrig direkte
+// fra browseren. Se supabase/functions/_shared/groq.ts for selve API-kaldet
+// og den fulde begrundelse for modelvalg.
 //
 // Bevidst IKKE et automatisk opfylder/opfylder-ikke-facit — se
 // bid-gonogo/index.ts's systemprompt. Modellen skal flage manglende data
@@ -39,6 +39,21 @@ export async function getClarifyingQuestions(requirements) {
   const data = await response.json().catch(() => null);
   if (!response.ok || !data) {
     throw new Error(data?.error || `Kunne ikke generere spørgsmål (HTTP ${response.status})`);
+  }
+  return data;
+}
+
+/**
+ * @param {{ kind: "egnethed"|"tildeling", typeCode?: string|null, category?: string, description: string, weight?: object|null }} requirement
+ * @param {{ title?: string|null, buyerName?: string|null }} tenderContext
+ * @param {object} company Samme kompakte objekt som getGoNoGoAssessment
+ * @returns {Promise<{ draftAnswer: string, needs_input: string[] }>}
+ */
+export async function getAnswerDraft(requirement, tenderContext, company) {
+  const response = await postToFunction("/bid-answer-draft", { requirement, tenderContext, company });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data) {
+    throw new Error(data?.error || `Kunne ikke generere udkast (HTTP ${response.status})`);
   }
   return data;
 }

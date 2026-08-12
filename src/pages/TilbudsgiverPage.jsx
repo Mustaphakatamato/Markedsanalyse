@@ -29,7 +29,15 @@ import {
 } from "../services/tedService";
 import { findLatestRegnskab } from "../services/regnskabService";
 import { getIndustryBenchmark, pickClosestBenchmarkYear } from "../services/industryBenchmarkService";
-import { getGoNoGoAssessment, getClarifyingQuestions } from "../services/bidAssessmentService";
+import { getGoNoGoAssessment, getClarifyingQuestions, getAnswerDraft } from "../services/bidAssessmentService";
+import {
+  loadWorkspace,
+  saveAnswer,
+  requirementId,
+  workspaceProgress,
+  ANSWER_STATUSES,
+  STATUS_LABELS
+} from "../services/bidWorkspaceService";
 import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
 import StatusChip from "../components/ui/StatusChip";
@@ -104,12 +112,144 @@ async function resolveCompanyFinancials(name) {
   return { cvr: match.cvr, financials };
 }
 
+// Én linje i kravbesvarelses-arbejdsområdet — dækker BÅDE egnethedskrav
+// (M-krav) og tildelingskriterier (K-krav), da begge i praksis skal
+// besvares i selve tilbuddet, blot med forskellig tone (se
+// bid-answer-draft/index.ts's systemprompt). Svaret gemmes lokalt pr. krav
+// via bidWorkspaceService — se den fils kommentar for hvorfor der ikke er
+// noget server-side lager her.
+function RequirementAnswerRow({ requirement, saved, onSave, tenderContext, company, companyReady }) {
+  const [answerText, setAnswerText] = useState(saved?.answerText || "");
+  const [status, setStatus] = useState(saved?.status || "ikke_startet");
+  const [needsInput, setNeedsInput] = useState(saved?.needsInput || []);
+  const [draftStatus, setDraftStatus] = useState("idle");
+  const [draftError, setDraftError] = useState(null);
+
+  const handleBlur = () => {
+    if (answerText !== (saved?.answerText || "")) onSave({ answerText });
+  };
+
+  const handleStatusChange = (e) => {
+    const next = e.target.value;
+    setStatus(next);
+    onSave({ status: next });
+  };
+
+  const handleDraft = async () => {
+    setDraftStatus("loading");
+    setDraftError(null);
+    try {
+      const result = await getAnswerDraft(
+        {
+          kind: requirement.kind,
+          typeCode: requirement.typeCode,
+          category: requirement.category,
+          description: requirement.description,
+          weight: requirement.weight || null
+        },
+        tenderContext,
+        company
+      );
+      const nextStatus = status === "ikke_startet" ? "kladde" : status;
+      setAnswerText(result.draftAnswer);
+      setNeedsInput(result.needs_input || []);
+      setStatus(nextStatus);
+      setDraftStatus("idle");
+      onSave({ answerText: result.draftAnswer, status: nextStatus, needsInput: result.needs_input || [] });
+    } catch (err) {
+      setDraftError(err.message || "Kunne ikke generere udkast.");
+      setDraftStatus("error");
+    }
+  };
+
+  return (
+    <div className="subcard">
+      <div className="space-between mobile-stack">
+        <div>
+          <p className="small" style={{ margin: 0 }}>
+            <strong>{requirement.category}</strong>{" "}
+            <span className="tag">{requirement.kind === "egnethed" ? "M-krav" : "K-krav"}</span>{" "}
+            {requirement.weight && (
+              <span className="tag tag--code">
+                {requirement.weight.value}
+                {requirement.weight.unit || ""}
+              </span>
+            )}
+          </p>
+          <p className="muted small" style={{ margin: "6px 0 0" }}>
+            {requirement.description}
+          </p>
+        </div>
+        <StatusChip tone={status === "faerdig" ? "ok" : status === "kladde" ? "warn" : "neutral"}>
+          {STATUS_LABELS[status]}
+        </StatusChip>
+      </div>
+
+      <div className="stack stack-tight" style={{ marginTop: 10 }}>
+        <textarea
+          className="textarea"
+          placeholder="Skriv jeres svar her, eller lad AI'en foreslå et udkast nedenfor…"
+          value={answerText}
+          onChange={(e) => setAnswerText(e.target.value)}
+          onBlur={handleBlur}
+        />
+
+        {needsInput.length > 0 && (
+          <div className="subcard">
+            <p className="small" style={{ marginTop: 0 }}>
+              <strong>Mangler input fra jer, før dette kan bruges direkte:</strong>
+            </p>
+            <ul className="trace" style={{ marginTop: 0 }}>
+              {needsInput.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {draftStatus === "error" && <p className="muted small">{draftError}</p>}
+
+        <div className="space-between mobile-stack" style={{ alignItems: "center" }}>
+          <select value={status} onChange={handleStatusChange} style={{ maxWidth: 170 }}>
+            {ANSWER_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-sm btn-secondary"
+            onClick={handleDraft}
+            disabled={draftStatus === "loading" || !companyReady}
+          >
+            {draftStatus === "loading" ? (
+              <Working>Skriver udkast…</Working>
+            ) : answerText ? (
+              "Nyt udkast (erstatter feltet)"
+            ) : (
+              "Foreslå udkast"
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TilbudsgiverPage({ onGoToCompany }) {
   const [noticeInput, setNoticeInput] = useState("");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState(null);
   const [requirements, setRequirements] = useState(null);
   const [expandedCriterion, setExpandedCriterion] = useState(null);
+  const [expandedAwardCriterion, setExpandedAwardCriterion] = useState(null);
+
+  // Kravbesvarelses-arbejdsområdet — nøglet på det aktuelt indlæste udbuds
+  // notice-nummer (ikke i `requirements`, som ikke selv rummer det). Se
+  // bidWorkspaceService.js for hvorfor det udelukkende ligger i localStorage.
+  const [currentPublicationNumber, setCurrentPublicationNumber] = useState(null);
+  const [workspace, setWorkspace] = useState({});
 
   const [market, setMarket] = useState([]);
   const [marketLoading, setMarketLoading] = useState(false);
@@ -262,6 +402,10 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     setQuestionsStatus("idle");
     setQuestions(null);
     setQuestionsError(null);
+    // Nyt udbud → nyt sæt krav → arbejdsområdet skal pege på DET udbuds egne
+    // gemte svar, ikke det forrige udbuds.
+    setCurrentPublicationNumber(null);
+    setWorkspace({});
 
     try {
       const data = await getTenderRequirements(publicationNumber);
@@ -272,6 +416,8 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
       }
       setRequirements(data);
       setStatus("found");
+      setCurrentPublicationNumber(publicationNumber);
+      setWorkspace(loadWorkspace(publicationNumber));
       // Kun gemt ved et RIGTIGT fund — en fejlet søgning skal ikke slette et
       // tidligere gyldigt udbud, man kan stadig ville se det igen efter et
       // refresh.
@@ -399,6 +545,23 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     branchens_soliditetsgrad_pct: ownBenchmarkForYear?.solvencyPct ?? null,
     antal_egne_vundne_eu_udbud: ownContracts?.total ?? null
   };
+
+  const handleSaveAnswer = (reqId, patch) => {
+    if (!currentPublicationNumber) return;
+    setWorkspace(saveAnswer(currentPublicationNumber, reqId, patch));
+  };
+
+  // Egnethedskrav (M-krav) og tildelingskriterier (K-krav) samlet i ét
+  // arbejdsområde — begge skal i praksis besvares i selve tilbuddet, blot
+  // med forskellig tone. Se RequirementAnswerRow og bid-answer-draft/index.ts.
+  const answerableRequirements = requirements
+    ? [
+        ...requirements.criteria.map((c) => ({ ...c, kind: "egnethed", weight: null })),
+        ...(requirements.awardCriteria || []).map((c) => ({ ...c, kind: "tildeling" }))
+      ]
+    : [];
+  const tenderContext = { title: requirements?.title, buyerName: requirements?.buyerName };
+  const answerProgress = workspaceProgress(workspace, answerableRequirements.length);
 
   const runGoNoGo = async () => {
     setGoNoGoStatus("loading");
@@ -618,6 +781,33 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
                 ))}
               </div>
             )}
+
+            {/* TED rummer aldrig selve udbudsmaterialet, kun en henvisning
+                til ordregiverens eget indkøbsportal — se
+                tedNoticeService.parseDocumentLinks. Mange af disse portaler
+                kræver login for selve download, så vi linker videre frem for
+                at hente eller fortolke dokumenterne selv. */}
+            {requirements.documentLinks?.length > 0 && (
+              <div className="stack stack-tight inner-gap">
+                <p className="eyebrow" style={{ margin: 0 }}>
+                  Udbudsmateriale
+                </p>
+                <div className="row" style={{ flexWrap: "wrap" }}>
+                  {requirements.documentLinks.map((doc, i) => (
+                    <a
+                      key={i}
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-secondary btn-sm"
+                    >
+                      <Icon name="external" size={12} />
+                      {doc.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="card">
@@ -666,6 +856,92 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
               })}
             </div>
           </section>
+
+          {requirements.awardCriteria?.length > 0 && (
+            <section className="card">
+              <div className="section-header">
+                <div>
+                  <h3>Tildelingskriterier</h3>
+                  <p className="muted small">
+                    Det udbuddet reelt VÆGTER og scorer tilbuddene på — adskilt fra egnethedskravene
+                    ovenfor, som kun er et minimumskrav (opfylder man dem ikke, kommer man slet ikke i
+                    betragtning). Vægtene summer typisk til 100%.
+                  </p>
+                </div>
+              </div>
+
+              <div className="stack">
+                {requirements.awardCriteria.map((criterion, i) => {
+                  const open = expandedAwardCriterion === i;
+                  const isLong = criterion.description.length > 300;
+                  return (
+                    <div className="subcard" key={i}>
+                      <div className="space-between mobile-stack">
+                        <p className="small" style={{ margin: 0 }}>
+                          <strong>{criterion.category}</strong>
+                        </p>
+                        {criterion.weight && (
+                          <span className="tag tag--code">
+                            {criterion.weight.value}
+                            {criterion.weight.unit || ""}
+                          </span>
+                        )}
+                      </div>
+                      <p className="muted small" style={{ margin: "6px 0 0" }}>
+                        {open || !isLong ? criterion.description : `${criterion.description.slice(0, 300)}…`}
+                      </p>
+                      {isLong && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-secondary"
+                          style={{ marginTop: 8 }}
+                          onClick={() => setExpandedAwardCriterion(open ? null : i)}
+                        >
+                          {open ? "Vis mindre" : "Vis hele kriteriet"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {answerableRequirements.length > 0 && (
+            <section className="card">
+              <div className="section-header">
+                <div>
+                  <h3>Kravbesvarelse</h3>
+                  <p className="muted small">
+                    Begynd at svare — ét felt pr. krav, gemt lokalt i browseren. "Foreslå udkast" beder
+                    Groq skrive et førsteudkast ud fra {OWN_COMPANY_NAME}s egne tal; alt den ikke har data
+                    til, sætter den som en tydelig [INDSÆT: …]-markering i stedet for at gætte.
+                  </p>
+                </div>
+                <StatusChip tone={answerProgress.done === answerProgress.total ? "ok" : "neutral"}>
+                  {answerProgress.done} af {answerProgress.total} færdige
+                  {answerProgress.started > 0 ? ` · ${answerProgress.started} kladder` : ""}
+                </StatusChip>
+              </div>
+
+              <div className="stack">
+                {answerableRequirements.map((requirement) => {
+                  const id = requirementId(requirement);
+                  return (
+                    <RequirementAnswerRow
+                      key={id}
+                      requirement={requirement}
+                      saved={workspace[id]}
+                      onSave={(patch) => handleSaveAnswer(id, patch)}
+                      tenderContext={tenderContext}
+                      company={ownCompanyForAssessment}
+                      companyReady={ownStatus === "found"}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* De to AI-kort er de eneste steder i appen hvor teksten er
               FORMULERET af en model frem for hentet fra en kilde. De får

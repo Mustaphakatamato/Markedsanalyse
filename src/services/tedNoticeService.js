@@ -50,6 +50,15 @@ function allByLocalName(doc, name) {
   return Array.from(doc.getElementsByTagName("*")).filter((el) => el.localName === name);
 }
 
+// Samme som allByLocalName, men begrænset til ét elements undertræ — bruges
+// hvor et felt sidder flere niveauer nede (fx AwardCriterionParameter, som
+// ligger inde i tre lag ext:UBLExtensions/efext:EformsExtension omkring hvert
+// SubordinateAwardingCriterion) og firstChildByLocalName derfor ikke rammer.
+function descendantByLocalName(parent, name) {
+  if (!parent) return null;
+  return Array.from(parent.getElementsByTagName("*")).find((el) => el.localName === name) || null;
+}
+
 function text(el) {
   return el?.textContent?.trim() || null;
 }
@@ -148,6 +157,67 @@ function parseSelectionCriteria(doc) {
       const description = text(firstChildByLocalName(el, "Description"));
       if (!description) return null;
       return { typeCode, category: categorizeCriterion(typeCode), description };
+    })
+    .filter(Boolean);
+}
+
+// Tildelingskriterier ("K-krav") — HELT adskilt XML-gren fra egnethedskrav
+// ovenfor: cac:ProcurementProjectLot > cac:TenderingTerms > cac:AwardingTerms
+// > cac:AwardingCriterion > cac:SubordinateAwardingCriterion (én pr. kriterie:
+// pris/kvalitet/omkostning). Verificeret på samme Ørsted-notice
+// (558609-2026): tre kriterier med AwardingCriterionTypeCode
+// price/quality/quality og en vægt i procent hver (35/25/...).
+//
+// Vægten ligger tre lag nede i en eForms-extension
+// (efac:AwardCriterionParameter > efbc:ParameterNumeric), styret af en
+// separat kode (efbc:ParameterCode, listName="number-weight") der angiver
+// HVILKEN slags tal der er tale om — kun "per-*"-koder er bekræftet at
+// betyde procent (set: "per-exa"). Ukendte kode-præfikser viser vi rå,
+// fremfor at gætte på enheden.
+const AWARD_TYPE_LABELS = { price: "Pris", quality: "Kvalitet", cost: "Omkostning" };
+
+function parseAwardWeight(criterionEl) {
+  const param = descendantByLocalName(criterionEl, "AwardCriterionParameter");
+  const code = text(firstChildByLocalName(param, "ParameterCode"));
+  const value = parseAmount(text(firstChildByLocalName(param, "ParameterNumeric")));
+  if (value == null) return null;
+  return { value, unit: code?.startsWith("per") ? "%" : null, code };
+}
+
+function parseAwardCriteria(doc) {
+  return allByLocalName(doc, "SubordinateAwardingCriterion")
+    .map((el) => {
+      const typeCode = text(firstChildByLocalName(el, "AwardingCriterionTypeCode"));
+      const description = text(firstChildByLocalName(el, "Description"));
+      if (!description) return null;
+      return {
+        typeCode,
+        category: AWARD_TYPE_LABELS[typeCode] || "Andet tildelingskriterie",
+        description,
+        weight: parseAwardWeight(el)
+      };
+    })
+    .filter(Boolean);
+}
+
+// Link(s) til det faktiske udbudsmateriale — TED rummer ALDRIG selve
+// dokumenterne, kun en henvisning til ordregiverens eget udbudsportal (fx
+// et ethics.dk/comdia/mercell/eget-portal-link). Verificeret på samme
+// notice: ét cac:CallForTendersDocumentReference med en beskrivende
+// cbc:ID ("All tender documents are available") og URL'en i
+// cac:Attachment > cac:ExternalReference > cbc:URI. Mange af disse portaler
+// kræver login for selve download — vi linker derfor videre, vi henter
+// eller fortolker ikke dokumenterne selv.
+function parseDocumentLinks(doc) {
+  return allByLocalName(doc, "CallForTendersDocumentReference")
+    .map((el) => {
+      const uri = text(descendantByLocalName(el, "URI"));
+      if (!uri) return null;
+      return {
+        label: text(firstChildByLocalName(el, "ID")) || "Udbudsmateriale",
+        documentType: text(firstChildByLocalName(el, "DocumentType")),
+        url: uri
+      };
     })
     .filter(Boolean);
 }
@@ -319,7 +389,9 @@ export async function getNoticeDetail(notice, companyName) {
  *   buyerName: string|null,
  *   cpvCodes: string[],
  *   lots: Array<{ id: string, title: string|null, description: string|null, cpvCodes: string[] }>,
- *   criteria: Array<{ typeCode: string|null, category: string, description: string }>
+ *   criteria: Array<{ typeCode: string|null, category: string, description: string }>,
+ *   awardCriteria: Array<{ typeCode: string|null, category: string, description: string, weight: { value: number, unit: string|null, code: string|null }|null }>,
+ *   documentLinks: Array<{ label: string, documentType: string|null, url: string }>
  * } | null>}
  */
 export async function getTenderRequirements(publicationNumber) {
@@ -336,6 +408,8 @@ export async function getTenderRequirements(publicationNumber) {
   const orgsById = parseOrganizations(doc);
   const buyerName = parseBuyerName(doc, orgsById);
   const criteria = parseSelectionCriteria(doc);
+  const awardCriteria = parseAwardCriteria(doc);
+  const documentLinks = parseDocumentLinks(doc);
 
   return {
     title: top.title,
@@ -343,6 +417,8 @@ export async function getTenderRequirements(publicationNumber) {
     buyerName,
     cpvCodes: top.cpvCodes,
     lots,
-    criteria
+    criteria,
+    awardCriteria,
+    documentLinks
   };
 }
