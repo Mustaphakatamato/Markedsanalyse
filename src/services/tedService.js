@@ -360,17 +360,19 @@ function wildcardWord(word) {
  * enten felt — verificeret direkte: en tilsvarende forespørgsel på "Ørsted"
  * + "rørled" gav præcis de 2 reelle Ørsted-rørlednings-udbud, intet andet.
  *
- * Afgrænset til danske ordregivere (buyer-country=DNK) — appens formål er
- * danske udbud, og uden afgrænsningen bliver EU-indekset for støjende til en
- * forslagsliste. En dansk virksomhed under et udenlandsk moderselskab vil
- * derfor kunne mangle her.
+ * Afgrænset til danske ordregivere (buyer-country=DNK) SOM UDGANGSPUNKT —
+ * appens primære formål er danske udbud, og uden afgrænsningen bliver
+ * EU-indekset hurtigt for støjende til en forslagsliste. Kaldende kode kan
+ * sætte scope: "EU" for bevidst at slå afgrænsningen fra og søge i hele
+ * TED, fx når et dansk datterselskab byder under et udenlandsk moderselskab,
+ * eller udbuddet ligger uden for Danmark.
  *
  * @param {string} text
- * @param {{ limit?: number }} [options]
+ * @param {{ limit?: number, scope?: "DK"|"EU" }} [options]
  * @returns {Promise<Array<{ publicationNumber: string, title: string|null, buyerName: string, date: string|null }>>}
  */
 export async function searchActiveNotices(text, options = {}) {
-  const { limit = 8 } = options;
+  const { limit = 8, scope = "DK" } = options;
 
   // Maks. 6 ord — dels for ikke at bygge en absurd lang forespørgsel af en
   // hel sætning indsat ved et uheld, dels fordi flere ord end det sjældent
@@ -384,7 +386,8 @@ export async function searchActiveNotices(text, options = {}) {
   if (words.length === 0) return [];
 
   const clauses = words.map((w) => `(notice-title=${w} OR buyer-name=${w})`).join(" AND ");
-  const query = `${clauses} AND notice-type=cn-standard AND buyer-country=DNK SORT BY publication-date DESC`;
+  const countryFilter = scope === "EU" ? "" : " AND buyer-country=DNK";
+  const query = `${clauses} AND notice-type=cn-standard${countryFilter} SORT BY publication-date DESC`;
 
   const data = await postSearch(query, { page: 1, limit });
 

@@ -110,6 +110,14 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
   const noticeBoxRef = useRef(null);
   const noticeSuggestionRequestRef = useRef(0);
 
+  // Udgangspunktet er kun danske ordregivere — appens primære formål. Kan
+  // udvides til hele EU, fx hvis udbuddet ligger i udlandet eller en dansk
+  // afdeling byder under et udenlandsk moderselskab. Gælder søgningen efter
+  // SELVE udbuddet (searchActiveNotices); konkurrentfeltet for et allerede
+  // valgt udbud er uafhængigt af dette valg, da det altid følger den
+  // konkrete ordregiver.
+  const [searchScope, setSearchScope] = useState("DK");
+
   useEffect(() => {
     const trimmed = noticeInput.trim();
     // Indeholder input allerede et genkendeligt notice-nummer (rå tal eller
@@ -124,7 +132,7 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     const timer = setTimeout(async () => {
       const requestId = ++noticeSuggestionRequestRef.current;
       try {
-        const results = await searchActiveNotices(trimmed);
+        const results = await searchActiveNotices(trimmed, { scope: searchScope });
         if (requestId !== noticeSuggestionRequestRef.current) return; // forældet svar
         setNoticeSuggestions(results);
       } catch {
@@ -133,7 +141,9 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [noticeInput]);
+    // Skift af scope skal opdatere forslagene med det samme, ligesom et nyt
+    // tastetryk ville.
+  }, [noticeInput, searchScope]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -261,7 +271,7 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     setStatus("loading");
     setMessage(null);
     try {
-      const results = await searchActiveNotices(noticeInput, { limit: 8 });
+      const results = await searchActiveNotices(noticeInput, { limit: 8, scope: searchScope });
       if (results.length === 1) {
         // Ét entydigt træf — spring mellemstationen over, samme som
         // CompanyLookupPage gør ved ét CVR-træf.
@@ -275,7 +285,11 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
       }
       setStatus("error");
       setMessage(
-        `Ingen udbud fundet der matcher "${noticeInput.trim()}". Prøv færre eller andre ord, et notice-nummer, eller indsæt selve TED-linket.`
+        `Ingen udbud fundet der matcher "${noticeInput.trim()}" i ${
+          searchScope === "EU" ? "hele EU" : "Danmark"
+        }. Prøv ${
+          searchScope === "DK" ? "Hele EU ovenfor, eller " : ""
+        }færre/andre ord — et notice-nummer eller TED-link virker altid.`
       );
     } catch (err) {
       setStatus("error");
@@ -358,6 +372,28 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
               disabled={status === "loading" || !noticeInput.trim()}
             >
               {status === "loading" ? <Working>Henter…</Working> : "Hent udbud"}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-between mobile-stack" style={{ marginTop: 14, alignItems: "center" }}>
+          <span className="muted small">Søg blandt ordregivere i</span>
+          <div className="seg">
+            <button
+              type="button"
+              className={`nav-button ${searchScope === "DK" ? "active" : ""}`}
+              aria-pressed={searchScope === "DK"}
+              onClick={() => setSearchScope("DK")}
+            >
+              Danmark
+            </button>
+            <button
+              type="button"
+              className={`nav-button ${searchScope === "EU" ? "active" : ""}`}
+              aria-pressed={searchScope === "EU"}
+              onClick={() => setSearchScope("EU")}
+            >
+              Hele EU
             </button>
           </div>
         </div>
