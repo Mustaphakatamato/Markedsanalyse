@@ -21,11 +21,11 @@ produktion. Selve datakilderne kræver hverken nøgler eller login.
 
 ## Status
 
-Fungerende MVP med to flows og fem live datakilder. Backend'en består af syv
+Fungerende MVP med tre flows og fem live datakilder. Backend'en består af syv
 Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
 gemmes stadig i browserens `localStorage`.
 
-## De to flows
+## De tre flows
 
 **Virksomhedsopslag** ([`pages/CompanyLookupPage.jsx`](src/pages/CompanyLookupPage.jsx))
 — søg på navn eller CVR-nummer og få:
@@ -46,6 +46,27 @@ gemmes stadig i browserens `localStorage`.
 - Markedsnøgletal for CPV-koden — **demo-data**
 - Kandidat-leverandører med relevans-score — **demo-data**
 - Seneste rigtige kontrakttildelinger i markedet, hentet fra TED på CPV-koden
+
+**Tilbudsgiver-radar** ([`pages/TilbudsgiverPage.jsx`](src/pages/TilbudsgiverPage.jsx))
+— det spejlvendte flow: de to ovenstående researcher markedet FOR en
+ordregiver, dette er til TILBUDSGIVEREN. Peg på et konkret, aktivt TED-udbud
+(link eller notice-nummer) og få:
+- Egnethedskrav udtrukket fra bekendtgørelsens fulde eForms-XML og
+  kategoriseret (økonomisk/finansiel formåen, teknisk/faglig formåen,
+  egnethed til at udøve erhvervet) — se
+  [`tedNoticeService.getTenderRequirements()`](src/services/tedNoticeService.js).
+  Kravteksten er ordregiverens egen, ukommenteret: TED har intet struktureret
+  talfelt for fx et minimumsomsætningskrav (verificeret på en rigtig
+  bekendtgørelse), så der er bevidst INGEN automatisk
+  opfylder/opfylder-ikke-vurdering.
+- Konkurrentfeltet: virksomheder der historisk har vundet flest kontrakter i
+  samme CPV-felt (og samme ordregiver, hvis kendt), med deres seneste
+  omsætning/soliditetsgrad — se
+  [`tedService.getMarketPlayers()`](src/services/tedService.js). Dette er
+  historiske VINDERE, aldrig en forudsigelse af hvem der byder — TED har
+  ingen data om bud, kun om tildelinger.
+- Egen profil: samme rigtige regnskabs- og TED-data som virksomhedsopslaget,
+  plus branchesammenligning, til direkte sammenligning med konkurrentfeltet.
 
 Flowene er koblet sammen: fra en kandidat-leverandør kan man hoppe direkte til
 virksomhedsopslaget for den pågældende virksomhed ([`App.jsx`](src/App.jsx)).
@@ -114,7 +135,8 @@ Tre ting er hardcodet og markeret som demo-data i UI'et:
 
 ```
 src/
-  lib/         apiClient.js — ét sted der ved hvor backend'en ligger
+  lib/         apiClient.js — ét sted der ved hvor backend'en ligger.
+               format.js — fælles tal-/dato-formattering (delt mellem sider)
   services/    Ét adapter-lag pr. datakilde — returnerer normaliserede objekter,
                så UI'et ikke kender kildernes formater
   data/        Demo-data (suppliers, cpvOptions) + naceSectionMap (branchekoder → DST-sektor)
@@ -122,7 +144,7 @@ src/
   components/  layout/TopNav+ThemeToggle, charts/TrendChart (håndtegnet SVG,
                ingen chart-lib), ui/ (SourceBadge, StatusChip, ConfidenceMeter,
                Loading, Icon — små præsentationskomponenter, ingen datahentning)
-  pages/       CompanyLookupPage, TenderPage
+  pages/       CompanyLookupPage, TenderPage, TilbudsgiverPage
 scripts/
   indlaes-cvr-navne.mjs      Ugentlig indlæsning af navneindekset
   indlaes-eu-sanktioner.mjs  Ugentlig indlæsning af sanktionslisten
@@ -218,6 +240,12 @@ hvis den nogensinde lukkes ned.
 4. **Navnematch mod TED har en grænse.** Der er ingen CVR/VAT på vinderen i de
    felter vi henter, så koncernselskaber i andre lande med samme navn kan
    komme med.
+5. **Tilbudsgiver-radaren viser kun EU-udbud** (samme TED-begrænsning som
+   punkt 3), og "konkurrentfeltet" er historiske VINDERE, ikke en
+   forudsigelse af hvem der byder på det konkrete udbud — den oplysning er
+   ikke offentligt tilgængelig noget sted. Egnethedskravene vises som
+   ordregiverens egen rå tekst, uden automatisk opfylder/opfylder
+   ikke-vurdering (se `tedNoticeService.getTenderRequirements()`).
 
 ## Næste skridt
 
