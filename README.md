@@ -141,9 +141,11 @@ src/
                så UI'et ikke kender kildernes formater
   data/        Demo-data (suppliers, cpvOptions) + naceSectionMap (branchekoder → DST-sektor)
   context/     ProjectsContext — udbud i localStorage
-  components/  layout/TopNav+ThemeToggle, charts/TrendChart (håndtegnet SVG,
-               ingen chart-lib), ui/ (SourceBadge, StatusChip, ConfidenceMeter,
-               Loading, Icon — små præsentationskomponenter, ingen datahentning)
+  components/  layout/Rail+ThemeToggle (app-skallen: fast venstreskinne, som
+               under 1040px lægger sig vandret i toppen — samme markup),
+               charts/TrendChart (håndtegnet SVG, ingen chart-lib),
+               ui/ (SourceBadge, StatusChip, ConfidenceMeter, Loading, Icon —
+               små præsentationskomponenter, ingen datahentning)
   pages/       CompanyLookupPage, TenderPage, TilbudsgiverPage
 scripts/
   indlaes-cvr-navne.mjs      Ugentlig indlæsning af navneindekset
@@ -155,7 +157,25 @@ supabase/
 ```
 
 Appen har ingen router og ingen UI-afhængigheder — kun React og Vite. Navigation
-mellem de to views er `useState` i `App.jsx`.
+mellem de tre views er `useState` i `App.jsx`.
+
+Designsystemet ligger samlet i [`src/index.css`](src/index.css) som CSS-variabler,
+uden Tailwind eller andet UI-framework. To regler styrer paletten, og de er
+begge dokumenteret i toppen af filen:
+
+1. **Farve er signal, ikke pynt.** Grøn = live kilde, gul = demo-data, rød =
+   kræver afklaring. De tre farver bruges aldrig dekorativt — hvis de gør,
+   holder de op med at betyde noget, og datakvaliteten er det eneste en
+   ordregiver ikke må tage fejl af.
+2. **Violet er maskinen.** Husets accent markerer kun der hvor systemet selv
+   gør noget: appens mærke, aktiv rute, fokusring, primær handling,
+   "arbejder nu"-tilstande og AI-genereret indhold. Den ligger bevidst langt
+   fra grøn/gul/rød og kan derfor aldrig forveksles med et datasignal.
+
+Sidernes indgang (søgefelt / valgt udbud) står på en mørk `.console`-flade.
+Den overskriver hele token-sættet lokalt med de mørke, allerede
+kontrastvaliderede værdier, så kilde-badges, chips og målere virker uændret
+ovenpå den — og betyder præcis det samme dér som alle andre steder.
 
 ### Backend
 

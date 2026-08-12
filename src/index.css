@@ -1,40 +1,70 @@
 /* ============================================================================
    Markedsanalyse — designsystem
    ----------------------------------------------------------------------------
-   Ét princip styrer paletten: FARVE ER SIGNAL, IKKE PYNT. Grønt betyder
-   udelukkende "live kilde / verificeret", gult udelukkende "demo-data", rødt
-   udelukkende "kræver afklaring". Ingen af de tre farver bruges dekorativt
-   nogen steder — ellers holder signalet op med at betyde noget, og det er den
-   eneste ting på siden en ordregiver ikke må tage fejl af.
+   TO REGLER STYRER HELE PALETTEN.
 
-   Kilde-badges er derfor bevidst IKKE hue-kodet pr. datakilde (fem
-   dekorative farver ville udvande netop det signal). Identitet bæres af
-   initialerne + navnet; farven bærer tillidsniveauet.
+   1) FARVE ER SIGNAL, IKKE PYNT. Grønt betyder udelukkende "live kilde /
+      verificeret", gult udelukkende "demo-data", rødt udelukkende "kræver
+      afklaring". Ingen af de tre farver bruges dekorativt nogen steder —
+      ellers holder signalet op med at betyde noget, og det er den eneste ting
+      på siden en ordregiver ikke må tage fejl af.
+
+      Kilde-badges er derfor bevidst IKKE hue-kodet pr. datakilde (fem
+      dekorative farver ville udvande netop det signal). Identitet bæres af
+      initialerne + navnet; farven bærer tillidsniveauet.
+
+   2) VIOLET ER MASKINEN. Husets accentfarve (--brand) bruges kun ét sted
+      begrebsmæssigt: hvor systemet selv gør noget — appens eget mærke,
+      aktiv navigation, fokusring, primær handling, "arbejder nu"-tilstande
+      og AI-genereret indhold. Den er valgt netop fordi den ligger langt fra
+      grøn/gul/rød og derfor aldrig kan forveksles med et datakvalitets-
+      signal. Blå (--info) er tilbage til to ting: neutrale informations-
+      chips og grafens dataserie.
 
    Alle tekstfarver er kontrastvalideret mod den flade de faktisk står på,
    både i lys og mørk tilstand — mindst WCAG AA (4.5:1) for brødtekst.
+
+   Layoutet er en app-skal: en fast venstreskinne med de tre flows, og et
+   arbejdsområde der starter med en mørk "konsol" (input) og fortsætter i
+   lyse resultatkort. Konsollen overskriver hele token-sættet lokalt til de
+   mørke, allerede kontrastvaliderede værdier — derfor virker enhver
+   eksisterende komponent (kilde-badge, chip, måler) uændret ovenpå den.
    ========================================================================= */
 
 :root {
   color-scheme: light;
 
   /* — flader ————————————————————————————————————————— */
-  --plane: #eaeff6;
+  --plane: #eef0f7;
   --surface: #ffffff;
   --surface-2: #f6f8fc;
   --surface-3: #eef2f8;
-  --surface-inv: #101827;
+  --surface-inv: #0d1120;
 
   /* — blæk ——————————————————————————————————————————— */
-  --ink: #0d1526;       /* overskrifter, tal */
+  --ink: #0b0f1c;       /* overskrifter, tal */
   --ink-2: #475569;     /* brødtekst        7,6:1 på hvid */
   --ink-3: #5b6a82;     /* dæmpet/meta      5,7:1 på hvid */
   --ink-inv: #f3f7fc;
 
   /* — streger ————————————————————————————————————————— */
-  --line: #e2e8f2;
+  --line: #e4e8f1;
   --line-2: #ccd6e5;
   --line-strong: #b3c1d6;
+
+  /* — husets accent: "systemet selv" —————————————————————
+     6,2:1 på hvid som tekstfarve. --brand-solid er knappens flade og har
+     ALTID hvid tekst ovenpå (5,1:1 i mørk tilstand, 6,2:1 i lys) — derfor
+     er den bevidst den samme mættede violet i begge tilstande, mens
+     --brand (tekst/ikon) lysner i mørk tilstand. */
+  --brand: #5b45e0;
+  --brand-solid: #5b45e0;
+  --brand-lift: #7059ef;
+  --brand-soft: #f0edfe;
+  --brand-soft-2: #e5e0fc;
+  --brand-line: #d5cdfb;
+  --brand-glow: rgba(91, 69, 224, 0.42);
+  --brand-aura: rgba(91, 69, 224, 0.14);
 
   /* — signal: verificeret / live kilde ————————————————— */
   --ok-fg: #0d6b45;     /* 6,6:1 på hvid */
@@ -60,35 +90,40 @@
   --warn-bd: #f4cdb8;
   --warn-mark: #ec835a;
 
-  /* — signal: analyse / i gang / kilde-reference ——————— */
+  /* — neutral information / kilde-reference ——————————— */
   --info-fg: #1c5cab;   /* 6,6:1 på hvid */
   --info-bg: #e9f1fd;
   --info-bd: #c2daf8;
   --info-mark: #2a78d6;
 
-  /* Dataviz single-series hue — valideret med skill'ens
+  /* Dataviz single-series hue — valideret med dataviz-skillens
      scripts/validate_palette.js mod netop denne apps kortflade:
      "#2a78d6" --mode light --surface "#ffffff" → alle checks PASS.
      Mørk tilstand: "#3987e5" --mode dark --surface "#111826" → alle PASS.
-     Skift ikke farven uden at køre validatoren igen. */
+     Kortfladen i mørk tilstand er siden gjort en anelse mørkere
+     (#101623), hvilket kun HÆVER kontrasten (4,9:1 → 5,0:1) — men skift
+     ikke selve farven uden at køre validatoren igen. */
   --chart-line: #2a78d6;
   --chart-fill: rgba(42, 120, 214, 0.10);
   --chart-grid: #e7ecf4;
 
   /* — effekter ————————————————————————————————————————— */
   --sheen: rgba(255, 255, 255, 0.85);
-  --shadow-1: 0 1px 2px rgba(13, 21, 38, 0.05), 0 1px 1px rgba(13, 21, 38, 0.03);
-  --shadow-2: 0 2px 4px rgba(13, 21, 38, 0.05), 0 8px 24px -12px rgba(13, 21, 38, 0.16);
-  --shadow-pop: 0 12px 40px -12px rgba(13, 21, 38, 0.28), 0 2px 6px rgba(13, 21, 38, 0.06);
-  --glass: rgba(255, 255, 255, 0.78);
-  --grid-ink: rgba(13, 21, 38, 0.035);
+  --shadow-1: 0 1px 2px rgba(11, 15, 28, 0.045), 0 1px 1px rgba(11, 15, 28, 0.03);
+  --shadow-2: 0 1px 2px rgba(11, 15, 28, 0.05), 0 10px 30px -14px rgba(11, 15, 28, 0.18);
+  --shadow-3: 0 1px 2px rgba(11, 15, 28, 0.05), 0 24px 50px -24px rgba(11, 15, 28, 0.26);
+  --shadow-pop: 0 16px 44px -14px rgba(11, 15, 28, 0.3), 0 2px 6px rgba(11, 15, 28, 0.07);
+  --glass: rgba(255, 255, 255, 0.72);
+  --grid-ink: rgba(11, 15, 28, 0.04);
+  --hairline: rgba(11, 15, 28, 0.06);
 
   /* — geometri ————————————————————————————————————————— */
   --r-xs: 6px;
-  --r-sm: 8px;
-  --r-md: 10px;
+  --r-sm: 9px;
+  --r-md: 11px;
   --r-lg: 14px;
   --r-xl: 18px;
+  --r-2xl: 24px;
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -97,17 +132,26 @@
   --s6: 24px;
   --s7: 32px;
   --s8: 40px;
+  --s9: 56px;
+  --rail-w: 244px;
+
+  /* — bevægelse ————————————————————————————————————————
+     Én kurve i hele appen: hurtig start, blød landing. */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 0.15s;
+  --t-mid: 0.28s;
 
   /* — typografi ————————————————————————————————————————— */
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Inter Tight", Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   /* Monospace bruges til ID'er og tal der læses tegn for tegn — CVR-numre,
-     notice-numre, CPV-koder. Ikke som stilgreb: det er hurtigere at
-     sammenholde med et andet dokument når cifrene står i faste kolonner. */
+     notice-numre, CPV-koder — og til de spærrede etiketter over hvert felt.
+     Ikke som stilgreb: det er hurtigere at sammenholde med et andet dokument
+     når cifrene står i faste kolonner. */
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
-  /* Bagudkompatible aliaser (gammelt navngivning brugt enkelte steder) */
+  /* Bagudkompatible aliaser (gammel navngivning brugt enkelte steder) */
   --bg: var(--plane);
   --card: var(--surface);
   --card-soft: var(--surface-2);
@@ -124,25 +168,37 @@
    Bevidst valgt, ikke et automatisk invers: hvert trin er sat mod den mørke
    flade og kontrastmålt igen. Lys er default (et due diligence-notat
    printes og screenshottes ind i udbudsmaterialet), mørk er tilgængelig for
-   dem der arbejder i den. */
+   dem der arbejder i den.
+
+   Blokken er ordret den samme for prefers-color-scheme og for et eksplicit
+   data-theme="dark" — derfor står den to gange. Ret altid begge. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --plane: #080d15;
-    --surface: #111826;
-    --surface-2: #161f30;
-    --surface-3: #1c2637;
+    --plane: #080a12;
+    --surface: #101623;
+    --surface-2: #161d2c;
+    --surface-3: #1d2637;
     --surface-inv: #e6edf7;
 
     --ink: #eaf1fa;
     --ink-2: #b3c2d6;   /* 8,6:1 på kortfladen */
     --ink-3: #8ea3bd;   /* 7,1:1 på kortfladen */
-    --ink-inv: #0d1526;
+    --ink-inv: #0b0f1c;
 
-    --line: #232f45;
-    --line-2: #2e3d57;
-    --line-strong: #3c4d6b;
+    --line: #222c40;
+    --line-2: #2e3a52;
+    --line-strong: #3c4a66;
+
+    --brand: #a99bff;   /* 8,0:1 på kortfladen */
+    --brand-solid: #6a53f0;
+    --brand-lift: #8570f5;
+    --brand-soft: rgba(122, 96, 245, 0.16);
+    --brand-soft-2: rgba(122, 96, 245, 0.24);
+    --brand-line: rgba(148, 126, 250, 0.34);
+    --brand-glow: rgba(106, 83, 240, 0.5);
+    --brand-aura: rgba(122, 96, 245, 0.2);
 
     --ok-fg: #6ee7b7;   /* 11,7:1 */
     --ok-bg: rgba(12, 163, 12, 0.13);
@@ -171,34 +227,45 @@
 
     --chart-line: #3987e5;
     --chart-fill: rgba(57, 135, 229, 0.14);
-    --chart-grid: #202b3f;
+    --chart-grid: #1f293c;
 
     --sheen: rgba(255, 255, 255, 0.07);
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-2: 0 2px 4px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
-    --shadow-pop: 0 16px 44px -14px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
-    --glass: rgba(17, 24, 38, 0.82);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -16px rgba(0, 0, 0, 0.8);
+    --shadow-3: 0 1px 2px rgba(0, 0, 0, 0.4), 0 26px 54px -26px rgba(0, 0, 0, 0.9);
+    --shadow-pop: 0 18px 48px -16px rgba(0, 0, 0, 0.85), 0 2px 6px rgba(0, 0, 0, 0.5);
+    --glass: rgba(16, 22, 35, 0.78);
     --grid-ink: rgba(255, 255, 255, 0.035);
+    --hairline: rgba(255, 255, 255, 0.07);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --plane: #080d15;
-  --surface: #111826;
-  --surface-2: #161f30;
-  --surface-3: #1c2637;
+  --plane: #080a12;
+  --surface: #101623;
+  --surface-2: #161d2c;
+  --surface-3: #1d2637;
   --surface-inv: #e6edf7;
 
   --ink: #eaf1fa;
   --ink-2: #b3c2d6;
   --ink-3: #8ea3bd;
-  --ink-inv: #0d1526;
+  --ink-inv: #0b0f1c;
 
-  --line: #232f45;
-  --line-2: #2e3d57;
-  --line-strong: #3c4d6b;
+  --line: #222c40;
+  --line-2: #2e3a52;
+  --line-strong: #3c4a66;
+
+  --brand: #a99bff;
+  --brand-solid: #6a53f0;
+  --brand-lift: #8570f5;
+  --brand-soft: rgba(122, 96, 245, 0.16);
+  --brand-soft-2: rgba(122, 96, 245, 0.24);
+  --brand-line: rgba(148, 126, 250, 0.34);
+  --brand-glow: rgba(106, 83, 240, 0.5);
+  --brand-aura: rgba(122, 96, 245, 0.2);
 
   --ok-fg: #6ee7b7;
   --ok-bg: rgba(12, 163, 12, 0.13);
@@ -227,14 +294,16 @@
 
   --chart-line: #3987e5;
   --chart-fill: rgba(57, 135, 229, 0.14);
-  --chart-grid: #202b3f;
+  --chart-grid: #1f293c;
 
   --sheen: rgba(255, 255, 255, 0.07);
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-2: 0 2px 4px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.7);
-  --shadow-pop: 0 16px 44px -14px rgba(0, 0, 0, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4);
-  --glass: rgba(17, 24, 38, 0.82);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -16px rgba(0, 0, 0, 0.8);
+  --shadow-3: 0 1px 2px rgba(0, 0, 0, 0.4), 0 26px 54px -26px rgba(0, 0, 0, 0.9);
+  --shadow-pop: 0 18px 48px -16px rgba(0, 0, 0, 0.85), 0 2px 6px rgba(0, 0, 0, 0.5);
+  --glass: rgba(16, 22, 35, 0.78);
   --grid-ink: rgba(255, 255, 255, 0.035);
+  --hairline: rgba(255, 255, 255, 0.07);
 }
 
 /* ==========================================================================
@@ -269,8 +338,9 @@ body {
   font-feature-settings: "cv05" 1, "ss01" 1;
 }
 
-/* Et næsten usynligt teknisk raster i baggrunden — det ligger BAG alle kort
-   og ses kun i mellemrummene. 3,5% blæk, ingen bevægelse. */
+/* Baggrunden: et næsten usynligt teknisk raster plus én rolig violet aura
+   oppe til venstre, hvor skinnen står. Begge ligger BAG alt indhold og ses
+   kun i mellemrummene. Ingen bevægelse, ingen af signalfarverne. */
 body::before {
   content: "";
   position: fixed;
@@ -279,9 +349,23 @@ body::before {
   pointer-events: none;
   background-image: linear-gradient(var(--grid-ink) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid-ink) 1px, transparent 1px);
-  background-size: 44px 44px;
-  mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, transparent 75%);
-  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 0%, transparent 75%);
+  background-size: 46px 46px;
+  mask-image: radial-gradient(110% 80% at 30% 0%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(110% 80% at 30% 0%, #000 0%, transparent 72%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+  top: -320px;
+  left: -180px;
+  width: 900px;
+  height: 720px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--brand-aura), transparent 70%);
+  filter: blur(20px);
 }
 
 #root {
@@ -298,11 +382,11 @@ textarea {
 }
 
 a {
-  color: var(--info-fg);
+  color: var(--brand);
   text-decoration: none;
   text-underline-offset: 3px;
   border-bottom: 1px solid transparent;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: border-color var(--t-fast) ease, color var(--t-fast) ease;
 }
 
 a:hover {
@@ -310,7 +394,7 @@ a:hover {
 }
 
 :focus-visible {
-  outline: 2px solid var(--info-mark);
+  outline: 2px solid var(--brand-solid);
   outline-offset: 2px;
   border-radius: var(--r-xs);
 }
@@ -319,9 +403,9 @@ h1,
 h2,
 h3,
 h4 {
-  letter-spacing: -0.014em;
-  line-height: 1.22;
-  font-weight: 650;
+  letter-spacing: -0.026em;
+  line-height: 1.18;
+  font-weight: 700;
   color: var(--ink);
 }
 
@@ -335,10 +419,13 @@ hr {
    Typografi-hjælpere
    ========================================================================== */
 
+/* Spærret mono-etiket. Sidder over hvert felt og hver sektion og er appens
+   mest gennemgående typografiske greb — den signalerer "instrumentbræt",
+   ikke "hjemmeside". */
 .eyebrow {
   margin: 0 0 var(--s2) 0;
-  font-size: 0.6875rem;
-  letter-spacing: 0.14em;
+  font-size: 0.625rem;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ink-3);
   font-weight: 650;
@@ -347,29 +434,33 @@ hr {
 
 .top-title {
   margin: 0;
-  font-size: 1.0625rem;
-  letter-spacing: -0.02em;
-  font-weight: 660;
+  font-size: 1rem;
+  letter-spacing: -0.03em;
+  font-weight: 700;
 }
 
 .hero-title-sm {
   margin: 0 0 var(--s2) 0;
-  font-size: clamp(1.45rem, 1.1rem + 1.3vw, 1.9rem);
-  letter-spacing: -0.025em;
-}
-
-.section-header h3,
-.card h3 {
-  font-size: 1.0625rem;
-  letter-spacing: -0.015em;
-}
-
-.card h4 {
-  font-size: 0.9375rem;
+  font-size: clamp(1.6rem, 1.1rem + 1.7vw, 2.25rem);
+  letter-spacing: -0.04em;
+  font-weight: 750;
 }
 
 .section-header h3,
 .card h3,
+.console h3 {
+  font-size: 1.125rem;
+  letter-spacing: -0.028em;
+}
+
+.card h4 {
+  font-size: 0.9375rem;
+  letter-spacing: -0.02em;
+}
+
+.section-header h3,
+.card h3,
+.console h3,
 .card h4 {
   margin-top: 0;
   margin-bottom: var(--s2);
@@ -381,7 +472,7 @@ hr {
 
 .small {
   font-size: 0.8125rem;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .text-sm {
@@ -411,60 +502,59 @@ hr {
   margin: 0;
   color: var(--ink-2);
   font-size: 0.9375rem;
-  max-width: 68ch;
+  line-height: 1.6;
+  max-width: 62ch;
 }
 
 /* ==========================================================================
-   Skal og topbar
+   App-skal: fast venstreskinne + arbejdsområde
    ========================================================================== */
 
 .app-shell {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  align-items: start;
 }
 
-.topbar {
-  background: var(--glass);
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  border-bottom: 1px solid var(--line);
-}
-
-.topbar.sticky {
+/* Skinnen. Ét sted der altid svarer på "hvor er jeg, og hvad kan jeg ellers".
+   Den er sticky i fuld højde, så den aldrig ruller væk midt i en analyse. */
+.rail {
   position: sticky;
   top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+  padding: var(--s6) var(--s4);
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border-right: 1px solid var(--line);
   z-index: 30;
 }
 
-.topbar-inner {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: var(--s3) var(--s6);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--s4);
-}
-
-.brand {
+.rail__brand {
   display: flex;
   align-items: center;
   gap: var(--s3);
   min-width: 0;
+  padding: 0 var(--s2);
 }
 
-/* Monogram: et lille datamærke i stedet for et logo vi ikke har. */
+/* Monogram: et lille datamærke i stedet for et logo vi ikke har — fire
+   datapunkter og en linje, samme figur som grafen på virksomhedsopslaget. */
 .brand-mark {
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--r-md);
   display: grid;
   place-items: center;
-  background: var(--surface-inv);
-  color: var(--ink-inv);
-  box-shadow: var(--shadow-1);
+  background: linear-gradient(160deg, var(--brand-lift), var(--brand-solid));
+  color: #ffffff;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset,
+    0 8px 20px -10px var(--brand-glow);
 }
 
 .brand-mark svg {
@@ -477,69 +567,115 @@ hr {
 
 .brand-text .eyebrow {
   margin: 0;
-  font-size: 0.625rem;
-  letter-spacing: 0.16em;
+  font-size: 0.5625rem;
+  letter-spacing: 0.22em;
 }
 
-.topbar-tools {
+.rail__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rail__label {
+  margin: 0 0 var(--s2);
+  padding: 0 var(--s2);
+  font-size: 0.5625rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  font-weight: 650;
+  color: var(--ink-3);
+}
+
+.rail__item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s3);
-}
-
-/* Segmenteret navigation — ét spor, aktiv knap løftet op på kortfladen. */
-.nav-switch {
-  display: inline-flex;
-  padding: 3px;
-  gap: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid transparent;
   border-radius: var(--r-md);
-}
-
-.nav-switch button {
-  border: 0;
   background: transparent;
-  color: var(--ink-3);
-  padding: 7px 14px;
-  border-radius: 7px;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-
-.nav-switch button:hover {
-  color: var(--ink);
-}
-
-.nav-switch button[aria-current="page"] {
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: var(--shadow-1);
-}
-
-.icon-button {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--r-md);
-  border: 1px solid var(--line);
-  background: var(--surface);
   color: var(--ink-2);
+  font-size: 0.8438rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: left;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition: color var(--t-fast) ease, background var(--t-fast) ease,
+    border-color var(--t-fast) ease;
 }
 
-.icon-button:hover {
-  color: var(--ink);
-  border-color: var(--line-strong);
-}
-
-.icon-button svg {
+.rail__item svg {
+  flex: none;
   display: block;
+  color: var(--ink-3);
+  transition: color var(--t-fast) ease;
+}
+
+.rail__item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail__item:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.rail__item:hover svg {
+  color: var(--ink-2);
+}
+
+/* Aktiv rute: violet mærke i venstre kant + tonet flade. Farven er husets
+   accent, ikke et datasignal — se reglen øverst i filen. */
+.rail__item[aria-current="page"] {
+  background: var(--brand-soft);
+  border-color: var(--brand-line);
+  color: var(--ink);
+}
+
+.rail__item[aria-current="page"] svg {
+  color: var(--brand);
+}
+
+.rail__item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 3px 3px 0;
+  background: var(--brand-solid);
+}
+
+.rail__foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4) var(--s2) 0;
+  border-top: 1px solid var(--line);
+}
+
+.rail__note {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.app-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ==========================================================================
@@ -548,37 +684,52 @@ hr {
 
 .page {
   width: 100%;
-  max-width: 1400px;
+  max-width: 1320px;
   margin: 0 auto;
-  padding: var(--s6);
+  padding: var(--s7) var(--s7) var(--s9);
   display: flex;
   flex-direction: column;
   gap: var(--s5);
 }
 
+/* Sektionerne lander forskudt når en side skiftes ind — ikke som pynt, men
+   fordi rækkefølgen (input → resultat → detaljer) er det siden vil læres i.
+   Slukkes helt under prefers-reduced-motion, se nederst. */
+.page > * {
+  animation: rise 0.55s var(--ease) both;
+}
+
+.page > *:nth-child(1) { animation-delay: 0ms; }
+.page > *:nth-child(2) { animation-delay: 45ms; }
+.page > *:nth-child(3) { animation-delay: 90ms; }
+.page > *:nth-child(4) { animation-delay: 120ms; }
+.page > *:nth-child(n + 5) { animation-delay: 145ms; }
+
 .card {
   position: relative;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-xl);
-  padding: var(--s6);
-  box-shadow: var(--shadow-1);
+  border-radius: var(--r-2xl);
+  padding: 26px 28px;
+  box-shadow: var(--shadow-2);
 }
 
 /* Kort der venter på data får en tynd, vandrende linje i toppen — samme
-   signal som en igangværende forespørgsel, uden at flytte på indholdet. */
-.card.is-working::after {
+   signal som en igangværende forespørgsel, uden at flytte på indholdet.
+   Violet: det er systemet der arbejder, ikke et udsagn om data. */
+.card.is-working::after,
+.console.is-working::after {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  border-radius: var(--r-2xl) var(--r-2xl) 0 0;
   overflow: hidden;
   background: linear-gradient(
       90deg,
       transparent 0%,
-      var(--info-mark) 35%,
-      var(--info-mark) 65%,
+      var(--brand-solid) 35%,
+      var(--brand-solid) 65%,
       transparent 100%
     )
     no-repeat;
@@ -591,6 +742,7 @@ hr {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   padding: var(--s4);
+  transition: border-color var(--t-fast) ease, background var(--t-fast) ease;
 }
 
 .subcard.is-open {
@@ -601,12 +753,146 @@ hr {
 
 .card-foot {
   margin-top: var(--s5);
-  padding-top: var(--s3);
+  padding-top: var(--s4);
   border-top: 1px solid var(--line);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s2) var(--s3);
+}
+
+/* ==========================================================================
+   Konsollen — sidens indgang
+   ----------------------------------------------------------------------------
+   Alle tre flows starter med ét spørgsmål: hvilken virksomhed, hvilket
+   CPV-område, hvilket udbud. Den handling får sin egen mørke flade, så det
+   altid er tydeligt hvor man skriver, og resultatkortene nedenunder aldrig
+   konkurrerer med den om opmærksomheden.
+
+   Fladen overskriver HELE token-sættet lokalt med de mørke værdier — de
+   samme der allerede er kontrastvalideret til mørk tilstand. Derfor
+   fungerer kilde-badges, chips, målere og knapper uændret ovenpå den, og
+   grøn/gul/rød betyder præcis det samme her som alle andre steder.
+   ========================================================================= */
+
+.console {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: var(--r-2xl);
+  padding: var(--s7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0b0e1a;
+  box-shadow: 0 1px 2px rgba(6, 8, 16, 0.4), 0 28px 60px -30px rgba(6, 8, 16, 0.6);
+
+  color-scheme: dark;
+  --surface: #151b2b;
+  --surface-2: #1a2133;
+  --surface-3: #212a3e;
+  --surface-inv: #e6edf7;
+
+  --ink: #f2f6fd;
+  --ink-2: #b8c6da;
+  --ink-3: #93a6c0;
+  --ink-inv: #0b0f1c;
+
+  --line: rgba(255, 255, 255, 0.09);
+  --line-2: rgba(255, 255, 255, 0.14);
+  --line-strong: rgba(255, 255, 255, 0.24);
+
+  /* Den lysere af de to violette flader — den mørkere ville stå for tæt
+     på konsollens egen baggrund. Hvid tekst er stadig 5,1:1. */
+  --brand: #b3a6ff;
+  --brand-solid: #6a53f0;
+  --brand-lift: #8570f5;
+  --brand-soft: rgba(122, 96, 245, 0.2);
+  --brand-line: rgba(148, 126, 250, 0.38);
+
+  --ok-fg: #6ee7b7;
+  --ok-bg: rgba(12, 163, 12, 0.15);
+  --ok-bd: rgba(110, 231, 183, 0.28);
+
+  --demo-fg: #fbbf24;
+  --demo-bg: rgba(250, 178, 25, 0.14);
+  --demo-bd: rgba(251, 191, 36, 0.28);
+
+  --alert-fg: #fca5a5;
+  --alert-bg: rgba(208, 59, 59, 0.18);
+  --alert-bd: rgba(252, 165, 165, 0.3);
+
+  --warn-fg: #f2b393;
+  --warn-bg: rgba(236, 131, 90, 0.16);
+  --warn-bd: rgba(242, 179, 147, 0.28);
+
+  --info-fg: #93c5fd;
+  --info-bg: rgba(57, 135, 229, 0.17);
+  --info-bd: rgba(57, 135, 229, 0.34);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -16px rgba(0, 0, 0, 0.8);
+  --shadow-pop: 0 18px 48px -16px rgba(0, 0, 0, 0.85), 0 2px 6px rgba(0, 0, 0, 0.5);
+  --sheen: rgba(255, 255, 255, 0.08);
+}
+
+/* Aura + raster. To lag, begge rene dekorationer uden signalfarver. */
+.console::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -40% -10% auto -20%;
+  height: 130%;
+  background: radial-gradient(46% 62% at 12% 0%, rgba(122, 96, 245, 0.38), transparent 68%),
+    radial-gradient(40% 55% at 88% 10%, rgba(42, 120, 214, 0.2), transparent 70%);
+}
+
+.console::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(90% 120% at 15% 0%, #000, transparent 70%);
+  -webkit-mask-image: radial-gradient(90% 120% at 15% 0%, #000, transparent 70%);
+}
+
+.console h2,
+.console h3,
+.console h4 {
+  color: var(--ink);
+}
+
+.console .lede,
+.console .muted {
+  color: var(--ink-2);
+}
+
+.console-head {
+  max-width: 64ch;
+  margin-bottom: var(--s6);
+}
+
+.console-head h3 {
+  font-size: clamp(1.45rem, 1.1rem + 1.3vw, 1.9rem);
+  letter-spacing: -0.04em;
+  font-weight: 750;
+  margin-bottom: var(--s3);
+}
+
+/* Indersiden af konsollen: selve inputtet står på en let løftet flade, så
+   feltet aldrig flyder sammen med den mørke baggrund. */
+.console-bay {
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: rgba(255, 255, 255, 0.035);
+  padding: var(--s5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.console .card-foot {
+  border-top-color: var(--line);
 }
 
 /* ==========================================================================
@@ -644,16 +930,20 @@ hr {
   gap: var(--s2);
 }
 
+/* Ombrydning er med vilje: i et smalt kort (fx de tre kolonner på
+   virksomhedsopslaget) er det bedre at kilde-badgen falder ned under
+   overskriften end at overskriften klemmes ned i to-tre ord pr. linje. */
 .section-header,
 .space-between {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   gap: var(--s4);
 }
 
 .section-header {
-  margin-bottom: var(--s4);
+  margin-bottom: var(--s5);
 }
 
 .align-right {
@@ -691,13 +981,13 @@ hr {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 9px;
+  padding: 4px 10px;
   border-radius: 999px;
   border: 1px solid var(--line-2);
   background: var(--surface-3);
   color: var(--ink-2);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 620;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -746,7 +1036,7 @@ hr {
 }
 
 .chip-lg {
-  padding: 6px 12px;
+  padding: 7px 14px;
   font-size: 0.8125rem;
 }
 
@@ -755,13 +1045,14 @@ hr {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 4px 11px;
   border-radius: 999px;
   border: 1px solid var(--line-2);
   background: var(--surface-3);
   color: var(--ink-2);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 620;
+  white-space: nowrap;
 }
 
 .pill-ok {
@@ -780,6 +1071,27 @@ hr {
   background: var(--demo-bg);
   border-color: var(--demo-bd);
   color: var(--demo-fg);
+}
+
+/* "AI-genereret" — husets accent, aldrig et af de tre datasignaler.
+   Prikken foran er ikke pynt: den gør mærket læsbart i sort/hvid print,
+   hvor den violette flade forsvinder. */
+.pill--ai {
+  background: var(--brand-soft);
+  border-color: var(--brand-line);
+  color: var(--brand);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pill--ai::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 /* Metadata-tags: neutrale, tætte, ingen farve. */
@@ -810,10 +1122,11 @@ hr {
 
 .tag__key {
   color: var(--ink-3);
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.11em;
   font-weight: 650;
+  font-family: var(--font-mono);
 }
 
 /* — kilde-badge —————————————————————————————————————————
@@ -824,13 +1137,13 @@ hr {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 3px 10px 3px 3px;
+  padding: 3px 11px 3px 3px;
   border-radius: 999px;
   border: 1px solid var(--line-2);
   background: var(--surface-3);
   color: var(--ink-2);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 620;
   line-height: 1.4;
   max-width: 100%;
 }
@@ -895,7 +1208,7 @@ hr {
   display: flex;
   align-items: flex-start;
   gap: var(--s3);
-  padding: var(--s4);
+  padding: var(--s4) var(--s5);
   border-radius: var(--r-lg);
   border: 1px solid var(--line-2);
   background: var(--surface-2);
@@ -918,7 +1231,7 @@ hr {
 
 .verdict__icon {
   flex: none;
-  margin-top: 1px;
+  margin-top: 2px;
 }
 
 .verdict--ok .verdict__icon {
@@ -939,8 +1252,8 @@ hr {
 
 .verdict__label {
   margin: 0;
-  font-size: 0.6875rem;
-  letter-spacing: 0.12em;
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   font-weight: 650;
   color: var(--ink-3);
@@ -948,10 +1261,10 @@ hr {
 }
 
 .verdict__value {
-  margin: 2px 0 0;
-  font-size: 1.0625rem;
-  font-weight: 660;
-  letter-spacing: -0.015em;
+  margin: 3px 0 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.028em;
   color: var(--ink);
 }
 
@@ -976,7 +1289,7 @@ hr {
 }
 
 .confidence__seg {
-  width: 15px;
+  width: 16px;
   height: 5px;
   border-radius: 2px;
   background: var(--line-2);
@@ -989,7 +1302,7 @@ hr {
 .confidence__label {
   font-size: 0.6875rem;
   font-weight: 700;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   font-family: var(--font-mono);
 }
@@ -1020,7 +1333,7 @@ hr {
   justify-content: space-between;
   align-items: baseline;
   gap: var(--s4);
-  padding: 9px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--line);
   font-size: 0.875rem;
 }
@@ -1039,7 +1352,7 @@ hr {
   min-width: 0;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--ink);
   text-align: right;
 }
@@ -1052,17 +1365,29 @@ hr {
   color: var(--alert-fg);
 }
 
+/* Talflise. Etiketten er spærret mono, tallet er stort og tabulært — en
+   kolonne af dem kan scannes lodret uden at læse etiketterne igen. */
 .stat {
-  padding: var(--s4);
+  position: relative;
+  padding: var(--s4) var(--s5);
   border-radius: var(--r-lg);
   border: 1px solid var(--line);
   background: var(--surface-2);
+  overflow: hidden;
+}
+
+.stat::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--line-2);
 }
 
 .stat__label {
   margin: 0 0 var(--s1);
-  font-size: 0.6875rem;
-  letter-spacing: 0.11em;
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   font-weight: 650;
   color: var(--ink-3);
@@ -1071,15 +1396,16 @@ hr {
 
 .stat__value {
   display: block;
-  font-size: 1.125rem;
-  font-weight: 660;
-  letter-spacing: -0.02em;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
 }
 
 .stat__value--big {
-  font-size: 1.5rem;
+  font-size: 1.875rem;
 }
 
 .data-table,
@@ -1092,13 +1418,14 @@ hr {
 .data-table th,
 .trend-table th {
   text-align: left;
-  padding: 8px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line-2);
   color: var(--ink-3);
   font-weight: 650;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.13em;
+  font-family: var(--font-mono);
   white-space: nowrap;
   background: var(--surface-2);
 }
@@ -1106,7 +1433,6 @@ hr {
 .data-table th:first-child,
 .trend-table th:first-child {
   border-top-left-radius: var(--r-sm);
-  border-bottom-left-radius: 0;
 }
 
 .data-table th:last-child,
@@ -1116,7 +1442,7 @@ hr {
 
 .data-table td,
 .trend-table td {
-  padding: 9px 12px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
@@ -1143,13 +1469,16 @@ hr {
   background: var(--surface-2);
 }
 
-/* Fremhæver "os selv" i en sammenligningstabel (Tilbudsgiver-radaren) —
-   bevidst en NEUTRAL flade, ikke en af de tre signalfarver (grøn/gul/rød),
-   som er reserveret til live/demo/kræver-afklaring. At være "os" er ikke et
-   tillidsniveau. */
+/* Fremhæver "os selv" i en sammenligningstabel (Tilbudsgiver-radaren).
+   Husets accent, IKKE en af de tre signalfarver (grøn/gul/rød): at være
+   "os" er ikke et tillidsniveau, det er systemets egen markering. */
 .data-table .row-own td {
-  background: var(--surface-2);
+  background: var(--brand-soft);
   font-weight: 600;
+}
+
+.data-table .row-own td:first-child {
+  box-shadow: inset 2px 0 0 var(--brand-solid);
 }
 
 /* ==========================================================================
@@ -1158,23 +1487,26 @@ hr {
 
 label {
   display: block;
-  margin-bottom: 6px;
-  font-size: 0.8125rem;
+  margin-bottom: 7px;
+  font-size: 0.6875rem;
   font-weight: 650;
-  color: var(--ink-2);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  color: var(--ink-3);
 }
 
 .input,
 .textarea,
 select {
   width: 100%;
-  padding: 10px 13px;
+  padding: 11px 14px;
   border: 1px solid var(--line-2);
   border-radius: var(--r-md);
   background: var(--surface);
   color: var(--ink);
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease;
 }
 
 .textarea {
@@ -1197,8 +1529,8 @@ select:hover {
 .input:focus,
 .textarea:focus,
 select:focus {
-  border-color: var(--info-mark);
-  box-shadow: 0 0 0 3px var(--info-bg);
+  border-color: var(--brand-solid);
+  box-shadow: 0 0 0 3px var(--brand-soft);
 }
 
 .filters-grid {
@@ -1220,13 +1552,15 @@ select:focus {
 }
 
 .search-field .input {
-  padding-left: 40px;
-  font-size: 0.9375rem;
+  padding-left: 42px;
+  font-size: 1rem;
+  padding-top: 13px;
+  padding-bottom: 13px;
 }
 
 .search-field__icon {
   position: absolute;
-  left: 13px;
+  left: 14px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--ink-3);
@@ -1249,7 +1583,7 @@ select:focus {
   box-shadow: var(--shadow-pop);
   max-height: 340px;
   overflow-y: auto;
-  animation: pop-in 0.14s ease-out;
+  animation: pop-in 0.16s var(--ease);
 }
 
 .suggestions-list li + li {
@@ -1275,7 +1609,7 @@ select:focus {
 
 .suggestions-list button:hover,
 .suggestions-list button:focus-visible {
-  background: var(--surface-2);
+  background: var(--brand-soft);
   outline: none;
 }
 
@@ -1299,14 +1633,16 @@ select:focus {
   gap: 7px;
   border: 1px solid transparent;
   border-radius: var(--r-md);
-  padding: 10px 15px;
+  padding: 11px 17px;
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 650;
+  letter-spacing: -0.01em;
   line-height: 1.2;
   white-space: nowrap;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease,
-    box-shadow 0.15s ease, opacity 0.15s ease;
+  transition: background var(--t-fast) ease, border-color var(--t-fast) ease,
+    color var(--t-fast) ease, box-shadow var(--t-fast) ease,
+    transform var(--t-fast) ease, opacity var(--t-fast) ease;
 }
 
 .btn svg {
@@ -1319,21 +1655,24 @@ select:focus {
   cursor: not-allowed;
 }
 
-.btn-sm {
-  padding: 6px 11px;
-  font-size: 0.8125rem;
-  border-radius: var(--r-sm);
-}
-
+/* Den primære handling. Violet flade med hvid tekst i BEGGE tilstande —
+   --brand-solid skifter kun en anelse, netop for at holde hvid tekst over
+   AA (6,2:1 lys / 5,1:1 mørk). */
 .btn-primary {
-  background: var(--surface-inv);
-  color: var(--ink-inv);
-  box-shadow: var(--shadow-1);
+  background: linear-gradient(180deg, var(--brand-lift), var(--brand-solid));
+  color: #ffffff;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 8px 20px -10px var(--brand-glow);
 }
 
 .btn-primary:not(:disabled):hover {
-  box-shadow: var(--shadow-2);
-  opacity: 0.92;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.24) inset,
+    0 12px 26px -10px var(--brand-glow);
+  transform: translateY(-1px);
+}
+
+.btn-primary:not(:disabled):active {
+  transform: none;
 }
 
 .btn-secondary {
@@ -1359,7 +1698,13 @@ select:focus {
   background: var(--surface-2);
 }
 
-/* Segmenteret vælger — bruges til nøgletals-skift under grafen. */
+.btn-sm {
+  padding: 7px 12px;
+  font-size: 0.8125rem;
+  border-radius: var(--r-sm);
+}
+
+/* Segmenteret vælger — nøgletals-skift under grafen, DK/EU-omfang. */
 .seg {
   display: inline-flex;
   flex-wrap: wrap;
@@ -1374,13 +1719,14 @@ select:focus {
   border: 0;
   background: transparent;
   color: var(--ink-3);
-  border-radius: 7px;
-  padding: 6px 12px;
+  border-radius: 8px;
+  padding: 6px 13px;
   cursor: pointer;
   font-size: 0.8125rem;
   font-weight: 600;
   white-space: nowrap;
-  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: color var(--t-fast) ease, background var(--t-fast) ease,
+    box-shadow var(--t-fast) ease;
 }
 
 .nav-button:hover {
@@ -1391,6 +1737,62 @@ select:focus {
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-1);
+}
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color var(--t-fast) ease, border-color var(--t-fast) ease,
+    background var(--t-fast) ease;
+}
+
+.icon-button:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+.icon-button svg {
+  display: block;
+}
+
+/* ==========================================================================
+   AI-flader
+   ----------------------------------------------------------------------------
+   Go/No-Go og spørgsmålsgenereringen er de eneste steder i appen hvor
+   indholdet er FORMULERET af en model og ikke hentet fra en kilde. De får
+   derfor husets accent som ramme — ikke for at fremhæve dem som bedre, men
+   for at man aldrig er i tvivl om hvad man læser.
+   ========================================================================= */
+
+.ai-panel {
+  border-color: var(--brand-line);
+  background: radial-gradient(120% 130% at 0% 0%, var(--brand-soft), transparent 52%),
+    var(--surface);
+}
+
+.ai-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  border-radius: var(--r-2xl) var(--r-2xl) 0 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--brand-solid) 20%,
+    var(--brand-lift) 50%,
+    var(--brand-solid) 80%,
+    transparent
+  );
+  opacity: 0.6;
 }
 
 /* ==========================================================================
@@ -1430,7 +1832,7 @@ select:focus {
 }
 
 /* Live-tilstand: "arbejder på det nu". Prikkerne pulserer i takt, teksten
-   står altid ved siden af — animationen bærer ikke information alene. */
+   står altid ved siden af — animationen bærer aldrig information alene. */
 .working {
   display: inline-flex;
   align-items: center;
@@ -1449,7 +1851,7 @@ select:focus {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--info-mark);
+  background: var(--brand-solid);
   animation: blip 1.15s ease-in-out infinite;
 }
 
@@ -1461,8 +1863,8 @@ select:focus {
   animation-delay: 0.32s;
 }
 
-/* I en knap arver tilstanden knappens egen farve — ellers ville den blå
-   prik forsvinde på den mørke primærknap. */
+/* I en knap arver tilstanden knappens egen farve — ellers ville den violette
+   prik forsvinde på den violette primærknap. */
 .btn .working {
   color: inherit;
   font-size: inherit;
@@ -1472,12 +1874,15 @@ select:focus {
   background: currentColor;
 }
 
-/* Operations-chip: ét diskret kald, med sin egen tilstand. */
+/* Operations-chip: ét diskret kald, med sin egen tilstand. Kørende =
+   violet (systemet arbejder), færdig = grøn (data er hentet), fejlet =
+   rød (mangler afklaring) — de to sidste ER datasignaler og bruger derfor
+   signalfarverne med fuld ret. */
 .op {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 9px;
+  padding: 3px 10px;
   border-radius: var(--r-xs);
   border: 1px solid var(--line);
   background: var(--surface-2);
@@ -1490,9 +1895,9 @@ select:focus {
 }
 
 .op--running {
-  border-color: var(--info-bd);
-  background: var(--info-bg);
-  color: var(--info-fg);
+  border-color: var(--brand-line);
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 
 .op--done {
@@ -1514,7 +1919,7 @@ select:focus {
 .reveal {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  transition: grid-template-rows var(--t-mid) var(--ease);
 }
 
 .reveal.is-open {
@@ -1548,14 +1953,14 @@ select:focus {
   border-left: 1px solid var(--line-2);
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
 }
 
 .trace li {
   position: relative;
   font-size: 0.75rem;
   color: var(--ink-3);
-  line-height: 1.5;
+  line-height: 1.55;
 }
 
 .trace li::before {
@@ -1581,9 +1986,9 @@ select:focus {
 
 .empty-state {
   border: 1px dashed var(--line-2);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-2xl);
   background: var(--surface-2);
-  padding: var(--s7) var(--s6);
+  padding: var(--s8) var(--s6);
   text-align: center;
 }
 
@@ -1594,14 +1999,20 @@ select:focus {
 
 .empty-state p {
   margin: 0 auto;
-  max-width: 60ch;
+  max-width: 58ch;
   font-size: 0.875rem;
 }
 
 .empty-state__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--surface);
   color: var(--ink-3);
-  margin-bottom: var(--s3);
-  display: inline-block;
+  margin-bottom: var(--s4);
 }
 
 /* ==========================================================================
@@ -1652,7 +2063,7 @@ select:focus {
   transform: translate(-50%, -130%);
   background: var(--surface-inv);
   color: var(--ink-inv);
-  padding: 6px 10px;
+  padding: 7px 11px;
   border-radius: var(--r-sm);
   font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
@@ -1679,12 +2090,14 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--t-fast) ease, box-shadow var(--t-fast) ease,
+    transform var(--t-fast) ease;
 }
 
 .supplier-card:hover {
   border-color: var(--line-strong);
-  box-shadow: var(--shadow-2);
+  box-shadow: var(--shadow-3);
+  transform: translateY(-2px);
 }
 
 .score {
@@ -1693,7 +2106,7 @@ select:focus {
   gap: 1px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--ink);
 }
@@ -1709,19 +2122,26 @@ select:focus {
   border-radius: 2px;
   background: var(--line-2);
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: 7px;
 }
 
 .score-bar i {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: var(--info-mark);
+  background: var(--brand-solid);
 }
 
 /* ==========================================================================
    Animationer
    ========================================================================== */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
 
 @keyframes sweep {
   100% {
@@ -1759,34 +2179,127 @@ select:focus {
 
 /* ==========================================================================
    Responsivt
+   ----------------------------------------------------------------------------
+   Skinnen er den samme markup hele vejen ned — under 1040px lægger den sig
+   vandret i toppen i stedet for lodret i siden, så der ikke findes to
+   navigationer at holde i sync.
    ========================================================================== */
 
-@media (max-width: 1200px) {
+@media (max-width: 1240px) {
   .two-one,
   .three-col {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 860px) {
-  .topbar-inner {
-    padding: var(--s3) var(--s4);
-    flex-wrap: wrap;
+@media (max-width: 1040px) {
+  /* Bevidst block og ikke ét gitter med to rækker: en sticky skinne i
+     række 1 kan kun klæbe inden for sin egen række, som er præcis dens
+     egen højde — altså slet ikke. I normalt blokflow klæber den til
+     toppen af hele siden, som den skal. */
+  .app-shell {
+    display: block;
   }
 
-  .nav-switch button {
-    padding: 7px 10px;
+  .rail {
+    position: sticky;
+    top: 0;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--s4);
+    padding: var(--s3) var(--s4);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+  }
+
+  .rail__brand {
+    padding: 0;
+  }
+
+  .rail__label {
+    display: none;
+  }
+
+  .rail__nav {
+    flex-direction: row;
+    gap: 2px;
+    padding: 3px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+  }
+
+  .rail__item {
+    padding: 7px 12px;
+  }
+
+  .rail__item[aria-current="page"] {
+    background: var(--surface);
+    border-color: var(--line);
+    box-shadow: var(--shadow-1);
+  }
+
+  .rail__item[aria-current="page"]::before {
+    display: none;
+  }
+
+  .rail__foot {
+    margin: 0 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    padding: 0;
+    border-top: 0;
+  }
+
+  .rail__note {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .page {
+    padding: var(--s5) var(--s5) var(--s8);
+  }
+
+  .console {
+    padding: var(--s5);
+  }
+
+  /* Kun ikoner er der plads til her — men etiketten skjules VISUELT, ikke
+     fra tilgængelighedstræet. display:none ville fjerne knappens eneste
+     tilgængelige navn og efterlade tre navnløse knapper. */
+  .rail__item span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .rail__item {
+    padding: 8px 11px;
   }
 }
 
 @media (max-width: 768px) {
   .page {
-    padding: var(--s4);
+    padding: var(--s4) var(--s4) var(--s7);
     gap: var(--s4);
   }
 
   .card {
     padding: var(--s5);
+  }
+
+  .console-bay {
+    padding: var(--s4);
   }
 
   .two-col,
@@ -1806,10 +2319,14 @@ select:focus {
   .section-header {
     flex-direction: column;
   }
+
+  .stat__value--big {
+    font-size: 1.5rem;
+  }
 }
 
 /* ==========================================================================
-   Reduceret bevægelse — alt der blinker eller glider slukkes
+   Reduceret bevægelse — alt der blinker, glider eller lander slukkes
    ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1821,6 +2338,10 @@ select:focus {
     transition-duration: 0.001ms !important;
   }
 
+  .page > * {
+    animation: none !important;
+  }
+
   .skeleton::after {
     display: none;
   }
@@ -1828,15 +2349,25 @@ select:focus {
   .working__dots i {
     opacity: 0.7;
   }
+
+  .btn-primary:not(:disabled):hover,
+  .supplier-card:hover {
+    transform: none;
+  }
 }
 
 /* ==========================================================================
    Print — et opslag ender ofte i udbudsmaterialet som bilag
+   ----------------------------------------------------------------------------
+   Konsollen skal også kunne printes: den nulstilles til hvid flade med sort
+   blæk, i stedet for at æde en hel tonerpatron eller gøre kilde-badges
+   ulæselige.
    ========================================================================== */
 
 @media print {
   :root,
-  :root[data-theme="dark"] {
+  :root[data-theme="dark"],
+  .console {
     color-scheme: light;
     --plane: #ffffff;
     --surface: #ffffff;
@@ -1847,21 +2378,66 @@ select:focus {
     --ink-3: #555555;
     --line: #cccccc;
     --line-2: #999999;
+    --line-strong: #666666;
+    --brand: #3b2ba8;
+    --brand-soft: #ffffff;
+    --brand-line: #999999;
     --shadow-1: none;
     --shadow-2: none;
+    --shadow-3: none;
+    --ok-fg: #0d6b45;
+    --ok-bg: #ffffff;
+    --ok-bd: #999999;
+    --demo-fg: #92400e;
+    --demo-bg: #ffffff;
+    --demo-bd: #999999;
+    --alert-fg: #b91c1c;
+    --alert-bg: #ffffff;
+    --alert-bd: #999999;
+    --warn-fg: #9a3412;
+    --warn-bg: #ffffff;
+    --warn-bd: #999999;
+    --info-fg: #1c5cab;
+    --info-bg: #ffffff;
+    --info-bd: #999999;
   }
 
   body::before,
-  .topbar,
+  body::after,
+  .console::before,
+  .console::after,
+  .ai-panel::before,
+  .rail,
   .btn,
   .seg,
   .icon-button {
     display: none !important;
   }
 
-  .card {
+  .app-shell {
+    display: block;
+  }
+
+  .console {
+    background: #ffffff;
+    border: 1px solid #999999;
+    box-shadow: none;
+  }
+
+  .console-bay {
+    background: #ffffff;
+    border-color: #cccccc;
+  }
+
+  .card,
+  .ai-panel {
     break-inside: avoid;
     border: 1px solid #cccccc;
+    background: #ffffff;
+  }
+
+  .page > * {
+    animation: none !important;
   }
 
   .reveal {

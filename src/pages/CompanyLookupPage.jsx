@@ -355,88 +355,91 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
 
   return (
     <main className="page">
-      <section className="card">
-        <div className="section-header">
-          <div>
-            <p className="eyebrow">Due diligence</p>
-            <h3>Virksomhedsopslag</h3>
-            <p className="lede">
-              Slå en virksomhed op på navn eller CVR-nummer og få ét samlet billede: CVR-stamdata,
-              vundne EU-udbud (TED), økonomi og ESG.
-            </p>
-          </div>
+      {/* Sidens indgang står på konsolfladen — se .console i index.css for
+          hvorfor input har sin egen mørke flade, og hvordan den beholder
+          farvesignalerne intakte. */}
+      <section className={`console ${status === "loading" ? "is-working" : ""}`}>
+        <div className="console-head">
+          <p className="eyebrow">Due diligence</p>
+          <h3>Slå en virksomhed op</h3>
+          <p className="lede">
+            Navn eller CVR-nummer giver ét samlet billede: CVR-stamdata, vundne EU-udbud (TED),
+            økonomi, branchesammenligning og ESG — med kilde på hvert eneste tal.
+          </p>
         </div>
 
-        <div className="filters-grid">
-          <div className="search-field" ref={searchBoxRef}>
-            <label htmlFor="company-query">Firmanavn eller CVR-nummer</label>
-            <div className="search-field__control">
-              <Icon name="search" size={16} className="search-field__icon" />
-              <input
-                id="company-query"
-                className="input"
-                placeholder="Fx Netcompany eller 25511484"
-                value={query}
-                autoComplete="off"
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setSuggestionsOpen(true);
-                }}
-                onFocus={() => suggestions.length > 0 && setSuggestionsOpen(true)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    setSuggestionsOpen(false);
-                    runSearch(query);
-                  } else if (e.key === "Escape") {
-                    setSuggestionsOpen(false);
-                  }
-                }}
-              />
-            </div>
-            {suggestionsOpen && suggestions.length > 0 && (
-              <ul className="suggestions-list">
-                {suggestions.map((kandidat) => (
-                  <li key={kandidat.cvr}>
-                    <button type="button" onClick={() => pickSuggestion(kandidat)}>
-                      <span>{kandidat.navn}</span>
-                      <span>CVR {kandidat.cvr}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="button-row align-end">
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setSuggestionsOpen(false);
-                runSearch(query);
-              }}
-              disabled={status === "loading" || !query.trim()}
-            >
-              {status === "loading" ? (
-                <Working>Slår op…</Working>
-              ) : (
-                <>
-                  <Icon name="search" size={14} />
-                  Slå op
-                </>
+        <div className="console-bay">
+          <div className="filters-grid">
+            <div className="search-field" ref={searchBoxRef}>
+              <label htmlFor="company-query">Firmanavn eller CVR-nummer</label>
+              <div className="search-field__control">
+                <Icon name="search" size={16} className="search-field__icon" />
+                <input
+                  id="company-query"
+                  className="input"
+                  placeholder="Fx Netcompany eller 25511484"
+                  value={query}
+                  autoComplete="off"
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setSuggestionsOpen(true);
+                  }}
+                  onFocus={() => suggestions.length > 0 && setSuggestionsOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      setSuggestionsOpen(false);
+                      runSearch(query);
+                    } else if (e.key === "Escape") {
+                      setSuggestionsOpen(false);
+                    }
+                  }}
+                />
+              </div>
+              {suggestionsOpen && suggestions.length > 0 && (
+                <ul className="suggestions-list">
+                  {suggestions.map((kandidat) => (
+                    <li key={kandidat.cvr}>
+                      <button type="button" onClick={() => pickSuggestion(kandidat)}>
+                        <span>{kandidat.navn}</span>
+                        <span>CVR {kandidat.cvr}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </button>
+            </div>
+            <div className="button-row align-end">
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setSuggestionsOpen(false);
+                  runSearch(query);
+                }}
+                disabled={status === "loading" || !query.trim()}
+              >
+                {status === "loading" ? (
+                  <Working>Slår op…</Working>
+                ) : (
+                  <>
+                    <Icon name="search" size={14} />
+                    Slå op
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="card-foot">
-          <span className="eyebrow" style={{ margin: 0 }}>
-            Kilder
-          </span>
-          <div className="source-row">
-            <SourceBadge source="cvr" />
-            <SourceBadge source="erst" />
-            <SourceBadge source="ted" />
-            <SourceBadge source="dst" />
-            <SourceBadge source="eu" />
+          <div className="card-foot">
+            <span className="eyebrow" style={{ margin: 0 }}>
+              Kilder
+            </span>
+            <div className="source-row">
+              <SourceBadge source="cvr" />
+              <SourceBadge source="erst" />
+              <SourceBadge source="ted" />
+              <SourceBadge source="dst" />
+              <SourceBadge source="eu" />
+            </div>
           </div>
         </div>
       </section>

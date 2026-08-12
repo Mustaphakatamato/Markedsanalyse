@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import TopNav from "./components/layout/TopNav";
+import Rail from "./components/layout/Rail";
 import CompanyLookupPage from "./pages/CompanyLookupPage";
 import TenderPage from "./pages/TenderPage";
 import TilbudsgiverPage from "./pages/TilbudsgiverPage";
@@ -45,13 +45,20 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <TopNav activeView={activeView} onChangeView={setActiveView} />
+      <Rail activeView={activeView} onChangeView={setActiveView} />
 
-      {activeView === "company" && (
-        <CompanyLookupPage prefillQuery={companyQuery} prefillToken={companyQueryToken} />
-      )}
-      {activeView === "tenders" && <TenderPage onGoToCompany={goToCompany} />}
-      {activeView === "bidder" && <TilbudsgiverPage onGoToCompany={goToCompany} />}
+      {/* key på arbejdsområdet: React river træet ned og bygger det op igen
+          ved hvert flow-skift, så sidens indgangsanimation (.page > *)
+          faktisk kører igen i stedet for kun ved første montering. Det er
+          rent visuelt — sidernes egen tilstand nulstilles alligevel, da de
+          er umonteret imellem. */}
+      <div className="app-main" key={activeView}>
+        {activeView === "company" && (
+          <CompanyLookupPage prefillQuery={companyQuery} prefillToken={companyQueryToken} />
+        )}
+        {activeView === "tenders" && <TenderPage onGoToCompany={goToCompany} />}
+        {activeView === "bidder" && <TilbudsgiverPage onGoToCompany={goToCompany} />}
+      </div>
     </div>
   );
 }

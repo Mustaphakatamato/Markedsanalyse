@@ -428,57 +428,87 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
 
   return (
     <main className="page">
-      <section className="card">
-        <div className="section-header">
-          <div>
-            <h3>Tilbudsgiver-radar</h3>
-            <p className="muted">
-              Peg på et konkret, aktivt TED-udbud og få egnethedskravene samlet ét sted, samt hvilke
-              virksomheder der historisk vinder i det marked — og hvordan {OWN_COMPANY_NAME} står i
-              forhold til dem.
-            </p>
-          </div>
+      {/* Sidens indgang står på konsolfladen — se .console i index.css. */}
+      <section className={`console ${status === "loading" ? "is-working" : ""}`}>
+        <div className="console-head">
+          <p className="eyebrow">Tilbudsgiver</p>
+          <h3>Peg på et aktivt udbud</h3>
+          <p className="lede">
+            TED-link, notice-nummer, titel eller ordregiver. Du får egnethedskravene samlet ét
+            sted, hvilke virksomheder der historisk vinder i markedet — og hvordan{" "}
+            {OWN_COMPANY_NAME} står i forhold til dem.
+          </p>
         </div>
 
-        <div className="filters-grid">
-          <div style={{ gridColumn: "1 / -1", position: "relative" }} ref={noticeBoxRef}>
-            <label htmlFor="notice-input">TED-link, notice-nummer, titel eller ordregiver</label>
-            <input
-              id="notice-input"
-              className="input"
-              placeholder="Fx et TED-link, 558609-2026, et udbudsnavn eller ordregiverens navn"
-              value={noticeInput}
-              autoComplete="off"
-              onChange={(e) => {
-                setNoticeInput(e.target.value);
-                setNoticeSuggestionsOpen(true);
-              }}
-              onFocus={() => noticeSuggestions.length > 0 && setNoticeSuggestionsOpen(true)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  setNoticeSuggestionsOpen(false);
-                  loadTender();
-                } else if (e.key === "Escape") {
-                  setNoticeSuggestionsOpen(false);
-                }
-              }}
-            />
-            {noticeSuggestionsOpen && noticeSuggestions.length > 0 && (
-              <ul className="suggestions-list">
-                {noticeSuggestions.map((notice) => (
-                  <li key={notice.publicationNumber}>
-                    <button type="button" onClick={() => pickNoticeSuggestion(notice)}>
-                      <span>{notice.title || "Udbud uden titel"}</span>
-                      <span className="muted small">
-                        {notice.buyerName || "Ukendt ordregiver"} · {formatDate(notice.date)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+        <div className="console-bay">
+          <div className="filters-grid">
+            <div className="search-field" style={{ gridColumn: "1 / -1" }} ref={noticeBoxRef}>
+              <label htmlFor="notice-input">TED-link, notice-nummer, titel eller ordregiver</label>
+              <div className="search-field__control">
+                <Icon name="search" size={16} className="search-field__icon" />
+                <input
+                  id="notice-input"
+                  className="input"
+                  placeholder="Fx et TED-link, 558609-2026, et udbudsnavn eller ordregiverens navn"
+                  value={noticeInput}
+                  autoComplete="off"
+                  onChange={(e) => {
+                    setNoticeInput(e.target.value);
+                    setNoticeSuggestionsOpen(true);
+                  }}
+                  onFocus={() => noticeSuggestions.length > 0 && setNoticeSuggestionsOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      setNoticeSuggestionsOpen(false);
+                      loadTender();
+                    } else if (e.key === "Escape") {
+                      setNoticeSuggestionsOpen(false);
+                    }
+                  }}
+                />
+              </div>
+              {noticeSuggestionsOpen && noticeSuggestions.length > 0 && (
+                <ul className="suggestions-list">
+                  {noticeSuggestions.map((notice) => (
+                    <li key={notice.publicationNumber}>
+                      <button type="button" onClick={() => pickNoticeSuggestion(notice)}>
+                        <span>{notice.title || "Udbud uden titel"}</span>
+                        <span className="muted small">
+                          {notice.buyerName || "Ukendt ordregiver"} · {formatDate(notice.date)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
-          <div className="button-row align-end">
+
+          {/* Søgefeltet fylder hele bredden (forslagsboksen skal være lige så
+              bred), så omfangsvælger og handling deler rækken nedenunder i
+              stedet for at ligge på hver sin linje. */}
+          <div className="space-between mobile-stack" style={{ marginTop: 14, alignItems: "center" }}>
+            <div className="row">
+              <span className="muted small">Søg blandt ordregivere i</span>
+              <div className="seg">
+                <button
+                  type="button"
+                  className={`nav-button ${searchScope === "DK" ? "active" : ""}`}
+                  aria-pressed={searchScope === "DK"}
+                  onClick={() => setSearchScope("DK")}
+                >
+                  Danmark
+                </button>
+                <button
+                  type="button"
+                  className={`nav-button ${searchScope === "EU" ? "active" : ""}`}
+                  aria-pressed={searchScope === "EU"}
+                  onClick={() => setSearchScope("EU")}
+                >
+                  Hele EU
+                </button>
+              </div>
+            </div>
             <button
               className="btn btn-primary"
               onClick={loadTender}
@@ -487,38 +517,16 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
               {status === "loading" ? <Working>Henter…</Working> : "Hent udbud"}
             </button>
           </div>
-        </div>
 
-        <div className="space-between mobile-stack" style={{ marginTop: 14, alignItems: "center" }}>
-          <span className="muted small">Søg blandt ordregivere i</span>
-          <div className="seg">
-            <button
-              type="button"
-              className={`nav-button ${searchScope === "DK" ? "active" : ""}`}
-              aria-pressed={searchScope === "DK"}
-              onClick={() => setSearchScope("DK")}
-            >
-              Danmark
-            </button>
-            <button
-              type="button"
-              className={`nav-button ${searchScope === "EU" ? "active" : ""}`}
-              aria-pressed={searchScope === "EU"}
-              onClick={() => setSearchScope("EU")}
-            >
-              Hele EU
-            </button>
-          </div>
-        </div>
-
-        <div className="card-foot">
-          <span className="eyebrow" style={{ margin: 0 }}>
-            Kilder
-          </span>
-          <div className="source-row">
-            <SourceBadge source="ted" label="TED · eForms-XML" />
-            <SourceBadge source="cvr" />
-            <SourceBadge source="erst" />
+          <div className="card-foot">
+            <span className="eyebrow" style={{ margin: 0 }}>
+              Kilder
+            </span>
+            <div className="source-row">
+              <SourceBadge source="ted" label="TED · eForms-XML" />
+              <SourceBadge source="cvr" />
+              <SourceBadge source="erst" />
+            </div>
           </div>
         </div>
       </section>
@@ -659,16 +667,21 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
             </div>
           </section>
 
-          <section className="card">
+          {/* De to AI-kort er de eneste steder i appen hvor teksten er
+              FORMULERET af en model frem for hentet fra en kilde. De får
+              derfor husets violette ramme (.ai-panel) — ikke som fremhævelse,
+              men så man aldrig er i tvivl om hvad man læser. */}
+          <section className="card ai-panel">
             <div className="section-header">
               <div>
-                <h3>AI-vurdering: Go/No-Go</h3>
+                <p className="eyebrow">Fase 01 · Kvalifikation</p>
+                <h3>Go/No-Go</h3>
                 <p className="muted small">
                   Groqs gpt-oss-120b vurderer ud fra egnethedskravene ovenfor og {OWN_COMPANY_NAME}s egne
                   tal — intet andet. Den gætter aldrig på manglende data, kun flager det.
                 </p>
               </div>
-              <span className="pill">AI-genereret</span>
+              <span className="pill pill--ai">AI-genereret</span>
             </div>
 
             {goNoGoStatus === "idle" && (
@@ -742,16 +755,17 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
             )}
           </section>
 
-          <section className="card">
+          <section className="card ai-panel">
             <div className="section-header">
               <div>
+                <p className="eyebrow">Fase 02 · Spørgsmål</p>
                 <h3>Foreslåede spørgsmål til ordregiver</h3>
                 <p className="muted small">
                   Groqs llama-3.1-8b genererer forslag ud fra udbudsteksten — send dem gennem
                   udbudsplatformens egen spørgsmål/svar-fane, appen sender intet selv.
                 </p>
               </div>
-              <span className="pill">AI-genereret</span>
+              <span className="pill pill--ai">AI-genereret</span>
             </div>
 
             {questionsStatus === "idle" && (

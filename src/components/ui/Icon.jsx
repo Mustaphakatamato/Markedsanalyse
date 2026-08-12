@@ -107,6 +107,24 @@ const PATHS = {
       <rect x="2.4" y="3" width="11.2" height="10" rx="1" />
       <path d="M2.4 6.4h11.2M6.6 6.4V13" />
     </>
+  ),
+  // Skinnens tre ruter har hver sit ikon: en bygning (virksomhedsopslaget),
+  // et dokument (udbuddet) og en radar (tilbudsgiver-radaren).
+  building: (
+    <>
+      <path d="M2.6 13.6V4.2a1 1 0 011-1h4.2a1 1 0 011 1v9.4" />
+      <path d="M8.8 13.6V7.1h3.6a1 1 0 011 1v5.5" />
+      <path d="M1.6 13.6h12.8" />
+      <path d="M4.6 5.9h2.2M4.6 8.4h2.2M4.6 10.9h2.2" />
+    </>
+  ),
+  radar: (
+    <>
+      <circle cx="8" cy="8" r="6.2" />
+      <circle cx="8" cy="8" r="3" />
+      <path d="M8 8l4.4-4.4" />
+      <circle cx="11.4" cy="4.6" r="0.9" fill="currentColor" stroke="none" />
+    </>
   )
 };
 

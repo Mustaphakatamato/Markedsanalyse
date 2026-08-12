@@ -145,7 +145,9 @@ function ProjectDetail({ project, onBack, onDelete, onGoToCompany }) {
 
   return (
     <main className="page">
-      <section className="card">
+      {/* Det valgte udbud er sidens anker og får konsolfladen, på samme
+          måde som søgefeltet gør det på de to andre flows. */}
+      <section className="console">
         <div className="space-between mobile-stack">
           <div>
             <p className="eyebrow">Udbud</p>
@@ -347,14 +349,15 @@ export default function TenderPage({ onGoToCompany }) {
 
   return (
     <main className="page">
-      <section className="card">
+      {/* Samme konsolflade som de to andre flows — se .console i index.css. */}
+      <section className="console">
         <div className="section-header">
-          <div>
+          <div className="console-head" style={{ marginBottom: 0 }}>
             <p className="eyebrow">Markedsbillede</p>
             <h3>Udbud &amp; markedsanalyse</h3>
             <p className="lede">
-              Opret et udbud og få en markedsanalyse: marked, kandidat-leverandører og reelle
-              TED-referencer for det pågældende CPV-område.
+              Opret et udbud og få et markedsbillede for CPV-området: typiske kontraktstørrelser,
+              kandidat-leverandører og reelle, nylige TED-tildelinger.
             </p>
           </div>
           {mode === "list" && (
