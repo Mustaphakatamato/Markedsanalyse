@@ -21,7 +21,7 @@ produktion. Selve datakilderne kræver hverken nøgler eller login.
 
 ## Status
 
-Fungerende MVP med to flows og fem live datakilder. Backend'en består af seks
+Fungerende MVP med to flows og fem live datakilder. Backend'en består af syv
 Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
 gemmes stadig i browserens `localStorage`.
 
@@ -33,7 +33,10 @@ gemmes stadig i browserens `localStorage`.
 - Regnskabstal med årsvælger, plus en udviklingsgraf over alle tilgængelige år
   (omsætning, resultat, egenkapital, balancesum, soliditetsgrad) — kan slås om
   til tabel
-- Vundne EU-udbud fra TED med værdi, ordregiver og link til den enkelte notice
+- Vundne EU-udbud fra TED med værdi, ordregiver og link til den enkelte notice.
+  For rammeaftaler/DPS med mange vindere vises virksomhedens EGNE delkontrakter
+  (lot, beløb, dato) i stedet for rammens fælles loftværdi — se
+  [`tedNoticeService.js`](src/services/tedNoticeService.js)
 - Risikoprofil: soliditet og overskudsgrad holdt op mod branchegennemsnittet
 - ESG & compliance: rigtigt EU-sanktionstjek, plus CSR/klima/whistleblower som
   **demo-data**, se nedenfor
@@ -55,7 +58,7 @@ virksomhedsopslaget for den pågældende virksomhed ([`App.jsx`](src/App.jsx)).
 |---|---|---|
 | **CVR** via Datafordeleren | Stamdata på virksomhed | [`cvrService.js`](src/services/cvrService.js) |
 | **Erhvervsstyrelsen** (virk.dk, XBRL) | Regnskabstal pr. regnskabsår | [`regnskabService.js`](src/services/regnskabService.js) |
-| **TED** (Tenders Electronic Daily, v3) | EU-udbud og kontrakttildelinger | [`tedService.js`](src/services/tedService.js) |
+| **TED** (Tenders Electronic Daily, v3) | EU-udbud og kontrakttildelinger | [`tedService.js`](src/services/tedService.js) (søgning) + [`tedNoticeService.js`](src/services/tedNoticeService.js) (fuld notice, lot-detalje) |
 | **Danmarks Statistik** (tabel REGN50A) | Branchegennemsnit for nøgletal | [`industryBenchmarkService.js`](src/services/industryBenchmarkService.js) |
 | **EU's konsoliderede sanktionsliste** (Financial Sanctions Files) | EU-sanktionstjek på virksomhedsnavn | [`sanctionsService.js`](src/services/sanctionsService.js) |
 
@@ -77,6 +80,16 @@ enkelte servicefil. De vigtigste:
   udtrækkes" med link til det indberettede regnskab.
 - **TED dækker kun udbud over EU's tærskelværdi.** Mindre danske kontrakter
   findes ikke her.
+- **TED's søge-API kan ikke bruges til at afgøre hvad én virksomhed vandt i en
+  rammeaftale.** For en notice med flere vindere leverer `/notices/search`
+  vindernavne og beløb som PARALLELLE ARRAYS uden noget felt der pålideligt
+  binder det ene til det andet — verificeret på SKI's standardsoftware-
+  rammeaftale (294230-2024): `winner-name` havde 210 indgange, `tender-lot-
+  identifier` 211, `tender-identifier` 209. At zippe dem sammen efter indeks
+  ville kunne give en virksomhed et forkert beløb. `tedNoticeService.js`
+  henter derfor i stedet notice'ens FULDE eForms-XML og joiner rigtigt på
+  ID'er (Organisation → TenderingParty → LotTender), samme "global scan,
+  aldrig gæt på position"-tilgang som XBRL-parsingen i `regnskabService.js`.
 - **Danmarks Statistik dækker kun private byerhverv** — landbrug, finans og
   offentlige brancher mangler (se [`naceSectionMap.js`](src/data/naceSectionMap.js)).
   Tallene er 1-2 år efterslæbte.
@@ -112,7 +125,7 @@ scripts/
   indlaes-cvr-navne.mjs      Ugentlig indlæsning af navneindekset
   indlaes-eu-sanktioner.mjs  Ugentlig indlæsning af sanktionslisten
 supabase/
-  functions/   cvr-soeg, cvr-datafordeler, ted, regnskab-search,
+  functions/   cvr-soeg, cvr-datafordeler, ted, ted-notice, regnskab-search,
                regnskab-doc, sanktionstjek + _shared/
   migrations/  Cache-tabeller, navneindeks og sanktionsliste
 ```
@@ -122,21 +135,25 @@ mellem de to views er `useState` i `App.jsx`.
 
 ### Backend
 
-Seks Edge Functions står mellem browseren og datakilderne. De findes fordi
+Syv Edge Functions står mellem browseren og datakilderne. De findes fordi
 kilderne ikke kan kaldes direkte: TED sender ingen CORS-headers, cvrapi.dk
 kræver en `User-Agent` browsere ikke må sætte, og Erhvervsstyrelsens data
 findes kun over `http://`. `sanktionstjek` slår i stedet op i vores eget
-indeks af sanktionslisten — se afsnittet nedenfor.
+indeks af sanktionslisten, og `ted-notice` er en ren proxy til TED's fulde
+eForms-XML pr. notice — parsingen sker i browseren, samme 2s CPU-loft-
+begrundelse som XBRL-parsingen nedenfor.
 
 De kaldes **ad samme vej i udvikling og produktion**. Det er bevidst: før lå
 de samme fire proxier i `vite.config.js`, hvor de kun fandtes i `dev` og
 `preview` — derfor kunne en bygget app ikke hostes. Genindfør ikke en dev-only
 proxy.
 
-Tre tabeller cacher svarene: CVR-opslag i syv dage, regnskabssøgninger i et
+Fire tabeller cacher svarene: CVR-opslag i syv dage, regnskabssøgninger i et
 døgn, regnskabsdokumenter i 30 dage (et offentliggjort regnskab ændrer sig
-ikke). Tabellerne har RLS slået til uden policies og er utilgængelige for
-klienten — kun funktionerne, som bruger service-nøglen, kan røre dem.
+ikke), TED-notices i 180 dage (en offentliggjort notice ændrer sig aldrig —
+en rettelse er en ny notice med sit eget nummer). Tabellerne har RLS slået
+til uden policies og er utilgængelige for klienten — kun funktionerne, som
+bruger service-nøglen, kan røre dem.
 
 ### Navneindekset
 

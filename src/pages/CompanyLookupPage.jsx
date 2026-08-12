@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { hentVirksomhed, søgVirksomheder } from "../services/cvrService";
 import { searchWonContractsByCompany } from "../services/tedService";
+import { getNoticeDetail } from "../services/tedNoticeService";
 import { getAvailableFiscalYears, getFinancialsForYear } from "../services/financialsService";
 import { getESGProfile } from "../services/esgService";
 import { checkSanctions } from "../services/sanctionsService";
@@ -71,6 +72,10 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
   const [contracts, setContracts] = useState({ notices: [], total: 0, usedFallback: false });
   const [contractsLoading, setContractsLoading] = useState(false);
   const [contractsError, setContractsError] = useState(null);
+  // Detaljer hentes dovent, kun for den udfoldede notice — ikke alle på én
+  // gang, da hver af dem er et separat kald der parser en fuld eForms-XML.
+  const [expandedNoticeId, setExpandedNoticeId] = useState(null);
+  const [noticeDetails, setNoticeDetails] = useState({});
   const [financials, setFinancials] = useState({ status: "idle" });
   const [financialsLoading, setFinancialsLoading] = useState(false);
   const [industryBenchmark, setIndustryBenchmark] = useState(null);
@@ -174,6 +179,8 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
 
     setContractsLoading(true);
     setContractsError(null);
+    setExpandedNoticeId(null);
+    setNoticeDetails({});
     setFinancialsLoading(true);
     setFinancials({ status: "idle" });
     setFiscalYears([]);
@@ -212,6 +219,28 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
     await Promise.all([contractsPromise, financialsPromise, benchmarkPromise, sanctionsPromise]);
   };
 
+  // Henter kun den fulde notice-XML ved første udfoldning af hvert kort, og
+  // gemmer resultatet, så et andet klik på samme kort ikke kalder igen.
+  const toggleNoticeDetail = async (notice) => {
+    if (expandedNoticeId === notice.id) {
+      setExpandedNoticeId(null);
+      return;
+    }
+    setExpandedNoticeId(notice.id);
+    if (noticeDetails[notice.id]) return;
+
+    setNoticeDetails((prev) => ({ ...prev, [notice.id]: { status: "loading" } }));
+    try {
+      const data = await getNoticeDetail(notice, company?.name);
+      setNoticeDetails((prev) => ({ ...prev, [notice.id]: { status: "ok", data } }));
+    } catch (err) {
+      setNoticeDetails((prev) => ({
+        ...prev,
+        [notice.id]: { status: "error", message: err.message || "Kunne ikke hente detaljer." }
+      }));
+    }
+  };
+
   useEffect(() => {
     if (!prefillToken) return;
     setQuery(prefillQuery);
@@ -220,9 +249,14 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillToken]);
 
+  // isMultiWinner-notices holdes UDENFOR summen: "value" der er notice'ens
+  // egen samlede loftværdi, ikke hvad virksomheden selv vandt (se
+  // tedService.js). At lægge den sammen med rigtige enkeltkontrakter ville
+  // kunne overdrive beløbet med en faktor 100+.
   const totalContractValueDkk = contracts.notices
-    .filter((n) => n.value != null && n.currency === "DKK")
+    .filter((n) => n.value != null && n.currency === "DKK" && !n.isMultiWinner)
     .reduce((sum, n) => sum + n.value, 0);
+  const multiWinnerCount = contracts.notices.filter((n) => n.isMultiWinner).length;
 
   const availableMetrics = METRIC_DEFS.filter((def) =>
     trendByYear.some((d) => d.financials?.status === "ok" && d.financials[def.key] != null)
@@ -664,7 +698,13 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
                     ? "Henter…"
                     : `${contracts.total} kontrakt${contracts.total === 1 ? "" : "er"} fundet i TED${
                         totalContractValueDkk > 0
-                          ? ` · samlet ${formatDkkMio(totalContractValueDkk)} (DKK-kontrakter)`
+                          ? ` · samlet ${formatDkkMio(totalContractValueDkk)} (enkeltkontrakter i DKK)`
+                          : ""
+                      }${
+                        multiWinnerCount > 0
+                          ? ` · ${multiWinnerCount} rammeaftale${
+                              multiWinnerCount === 1 ? "" : "r"
+                            } med flere vindere ikke talt med — se enkeltbeløb under "Se detaljer"`
                           : ""
                       }`}
                 </p>
@@ -689,32 +729,175 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
             )}
 
             <div className="stack">
-              {contracts.notices.map((notice) => (
-                <div className="subcard" key={notice.id}>
-                  <div className="space-between mobile-stack">
-                    <div>
-                      <strong>{notice.buyerName || "Ukendt ordregiver"}</strong>
-                      <p className="muted small">
-                        Type: {notice.noticeType || "–"} · Notice-nr.: {notice.publicationNumber || "–"}
-                      </p>
+              {contracts.notices.map((notice) => {
+                const detail = noticeDetails[notice.id];
+                const expanded = expandedNoticeId === notice.id;
+
+                return (
+                  <div className="subcard" key={notice.id}>
+                    <div className="space-between mobile-stack">
+                      <div>
+                        <strong>{notice.buyerName || "Ukendt ordregiver"}</strong>
+                        <p className="muted small">
+                          Type: {notice.noticeType || "–"} · Notice-nr.: {notice.publicationNumber || "–"}
+                        </p>
+                      </div>
+                      <div className="align-right">
+                        {notice.isMultiWinner ? (
+                          <>
+                            <p className="muted small">
+                              Rammeaftale/DPS med {notice.winnerCount} vindere
+                            </p>
+                            <p className="small">
+                              Loftværdi:{" "}
+                              {notice.value != null
+                                ? `${notice.value.toLocaleString("da-DK")} ${notice.currency || ""}`
+                                : "Ikke oplyst"}
+                            </p>
+                          </>
+                        ) : (
+                          <p>
+                            Værdi:{" "}
+                            {notice.value != null
+                              ? `${notice.value.toLocaleString("da-DK")} ${notice.currency || ""}`
+                              : "Ikke oplyst"}
+                          </p>
+                        )}
+                        <p>Dato: {formatDate(notice.date)}</p>
+                        <div className="button-row" style={{ justifyContent: "flex-end" }}>
+                          {notice.publicationNumber && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => toggleNoticeDetail(notice)}
+                            >
+                              {expanded ? "Skjul detaljer" : "Se detaljer"}
+                            </button>
+                          )}
+                          {notice.url && (
+                            <a
+                              href={notice.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="btn btn-sm btn-secondary"
+                            >
+                              Se notice →
+                            </a>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="align-right">
-                      <p>
-                        Værdi:{" "}
-                        {notice.value != null
-                          ? `${notice.value.toLocaleString("da-DK")} ${notice.currency || ""}`
-                          : "Ikke oplyst"}
-                      </p>
-                      <p>Dato: {formatDate(notice.date)}</p>
-                      {notice.url && (
-                        <a href={notice.url} target="_blank" rel="noreferrer">
-                          Se notice →
-                        </a>
-                      )}
-                    </div>
+
+                    {expanded && (
+                      <div className="stack inner-gap">
+                        {detail?.status === "loading" && (
+                          <p className="muted small">Henter detaljer fra TED's fulde notice…</p>
+                        )}
+                        {detail?.status === "error" && <p className="muted small">{detail.message}</p>}
+
+                        {detail?.status === "ok" && (
+                          <>
+                            {detail.data.title && (
+                              <div>
+                                <strong>{detail.data.title}</strong>
+                                {detail.data.description && (
+                                  <p className="muted small">
+                                    {detail.data.description.length > 600
+                                      ? `${detail.data.description.slice(0, 600)}…`
+                                      : detail.data.description}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {detail.data.lots.length > 0 && (
+                              <div className="stack" style={{ gap: 10 }}>
+                                <p className="small" style={{ marginBottom: 0 }}>
+                                  <strong>Lots ({detail.data.lots.length})</strong>
+                                </p>
+                                {detail.data.lots.map((lot) => (
+                                  <div key={lot.id}>
+                                    <p className="small" style={{ marginBottom: 2 }}>
+                                      <strong>{lot.title || lot.id}</strong>
+                                    </p>
+                                    {lot.description && (
+                                      <p className="muted small">{lot.description}</p>
+                                    )}
+                                    {lot.cpvCodes.length > 0 && (
+                                      <div className="tag-row">
+                                        {lot.cpvCodes.map((cpv) => (
+                                          <span className="tag" key={cpv}>
+                                            {cpv}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {notice.isMultiWinner &&
+                              (detail.data.companyAwards.length > 0 ? (
+                                <div>
+                                  <p className="small">
+                                    <strong>{company?.name}</strong> har vundet følgende delkontrakter i
+                                    denne rammeaftale:
+                                  </p>
+                                  <div style={{ overflowX: "auto" }}>
+                                    <table className="trend-table">
+                                      <thead>
+                                        <tr>
+                                          <th>Lot</th>
+                                          <th>Delkontrakt</th>
+                                          <th>Dato</th>
+                                          <th>Værdi</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {detail.data.companyAwards.map((award) => (
+                                          <tr key={award.tenderId}>
+                                            <td>{award.lotTitle || award.lotId || "–"}</td>
+                                            <td>{award.description || "–"}</td>
+                                            <td>{formatDate(award.awardDate)}</td>
+                                            <td>
+                                              {award.value != null
+                                                ? `${award.value.toLocaleString("da-DK")} ${
+                                                    award.currency || ""
+                                                  }`
+                                                : "–"}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                        <tr>
+                                          <td colSpan={3}>
+                                            <strong>I alt</strong>
+                                          </td>
+                                          <td>
+                                            <strong>
+                                              {detail.data.companyAwardsTotal.toLocaleString("da-DK")} DKK
+                                            </strong>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="muted small">
+                                  Kunne ikke finde specifikke delkontrakter for {company?.name} i
+                                  rammeaftalens XML — navnet kan afvige fra det TED har registreret som
+                                  vinder. Loftværdien ovenfor er IKKE et udtryk for hvad virksomheden
+                                  reelt har fået tildelt.
+                                </p>
+                              ))}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         </>

@@ -56,13 +56,17 @@ function allTexts(field) {
 const OWNER_MARKER = /\s+v\/.*$/i;
 const LEGAL_FORM_SUFFIX = /[\s,]+(a\/s|aps|ivs|i\/s|k\/s|p\/s|a\.m\.b\.a\.|amba|smba|fmba)\.?$/i;
 
-function coreCompanyName(name) {
+// Eksporteres så tedNoticeService.js kan bruge PRÆCIS samme matching, når den
+// slår et firmanavn op blandt organisationerne i en notices fulde XML — to
+// forskellige match-implementeringer ville kunne give modstridende svar for
+// samme firma.
+export function coreCompanyName(name) {
   return name.replace(OWNER_MARKER, "").replace(LEGAL_FORM_SUFFIX, "").trim();
 }
 
 // Sammenligning skal være ufølsom over for store/små bogstaver, diakritiske
 // tegn (Ø/ø, é) og tegnsætning — "A/S Øresund" og "as oresund" er samme navn.
-function normalizeForMatch(text) {
+export function normalizeForMatch(text) {
   return text
     .toLowerCase()
     .normalize("NFD")
@@ -93,10 +97,23 @@ async function postSearch(query, { page = 1, limit = 25 } = {}) {
   return response.json();
 }
 
+// Antal vindere på notice'en, ikke kun det første navn firstText() viser.
+// For en almindelig kontrakt er det 1. For en rammeaftale/DPS med kaskade af
+// leverandører kan det være over 100 — signalet vi bruger til at afgøre om
+// "value" er PENGENE DENNE VIRKSOMHED har vundet, eller rammens fælles
+// loftværdi som IKKE må tilskrives én enkelt vinder. Se tedNoticeService.js
+// for det rigtige per-virksomhed beløb i det sidste tilfælde.
+function countWinners(field) {
+  if (!field) return 0;
+  const values = Object.values(field)[0];
+  return Array.isArray(values) ? values.length : values ? 1 : 0;
+}
+
 function normalizeNotice(notice) {
   const currency = Array.isArray(notice["total-value-cur"])
     ? notice["total-value-cur"][0]
     : notice["total-value-cur"];
+  const winnerCount = countWinners(notice["winner-name"]);
 
   return {
     id: notice["notice-identifier"] || notice["publication-number"],
@@ -104,6 +121,11 @@ function normalizeNotice(notice) {
     date: notice["publication-date"] || null,
     noticeType: notice["notice-type"] || null,
     winnerName: firstText(notice["winner-name"]),
+    winnerCount,
+    // true = flere vindere delte denne notice (typisk en rammeaftale/DPS med
+    // kaskade). "value" nedenfor er så notice'ens SAMLEDE loftværdi, ikke
+    // hvad den enkelte virksomhed reelt fik tildelt.
+    isMultiWinner: winnerCount > 1,
     buyerName: firstText(notice["buyer-name"]),
     value: typeof notice["total-value"] === "number" ? notice["total-value"] : null,
     currency: currency || null,
