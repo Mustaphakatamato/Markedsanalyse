@@ -322,6 +322,34 @@ Normaliseringen ligger i SQL (`navn_normaliser`, `navn_kerne`) og ikke kun i
 `tedService.js`, fordi opslaget skal kunne bruge et udtryksindeks. De to
 implementeringer skal holdes ens — der er en paritetstest for netop det.
 
+### Test af migrationer
+
+```bash
+npm i -D embedded-postgres    # én gang, ~144 MB
+npm run test:db
+```
+
+[`scripts/test-migrationer.mjs`](scripts/test-migrationer.mjs) kører hele
+migrationskæden fra bunden mod en rigtig PostgreSQL 17 — samme major version
+som produktionen — og afprøver funktionerne med data, der rammer de kendte
+kanttilfælde. **Kør den efter enhver ændring i `supabase/migrations/`.**
+
+Den findes fordi der ikke er nogen anden vej til at afprøve en migration, før
+den rammer produktion: der er ingen staging-database, og at parse SQL'en fanger
+kun syntaks — og slet ikke inde i funktionskroppe, som bare er strenge. Testen
+har allerede fanget tre fejl, der ellers var gået igennem: `IS DISTINCT FROM
+ALL` findes ikke i SQL, `prBranche` skiftede betydning ved en omskrivning, og
+navnematchningen fandt ikke "Beta IT ApS" ud fra "Beta IT".
+
+Paritetstesten mellem SQL og JavaScript læser reglerne **ud af**
+`src/services/tedService.js` frem for at gentage dem. Ændrer nogen dem dér,
+fejler testen — i stedet for at bestå på en forældet kopi.
+
+`embedded-postgres` står med vilje ikke i `package.json`: den henter en
+PostgreSQL-binary pr. platform som optionalDependency, og Vercel ville så
+hente Linux-udgaven ved hvert deploy — 144 MB for en test, der aldrig kører
+der. Scriptet siger selv til, hvis modulet mangler.
+
 XBRL-parsingen bliver i browseren med vilje: Edge Functions har kun 2s CPU-tid
 pr. request, hvilket ikke rækker til et større regnskabsdokument. Proxying er
 async I/O og tæller ikke med.
