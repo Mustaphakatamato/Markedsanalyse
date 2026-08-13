@@ -11,6 +11,7 @@ import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
 import StatusChip from "../components/ui/StatusChip";
 import ConfidenceMeter from "../components/ui/ConfidenceMeter";
+import MetricRow from "../components/ui/Metric";
 import { Working, SkeletonRows, OpChip } from "../components/ui/Loading";
 import { formatDkkMio, formatPercent, formatDate, formatDanishDate, formatAmount } from "../lib/format";
 
@@ -30,22 +31,6 @@ const METRIC_DEFS = [
 function formatCreditRemark(remark) {
   if (!remark) return null;
   return `${remark.type} — ${remark.stage} (siden ${formatDanishDate(remark.since)})`;
-}
-
-// Beløb, procenter og datoer sættes i tabularnumre, så kolonner flugter
-// lodret når man scanner ned gennem nøgletallene.
-function Figure({ children, tone }) {
-  const toneClass = tone ? ` metric__value--${tone}` : "";
-  return <span className={`metric__value num${toneClass}`}>{children}</span>;
-}
-
-function MetricRow({ label, value, tone }) {
-  return (
-    <div className="metric">
-      <span className="metric__label">{label}</span>
-      <Figure tone={tone}>{value}</Figure>
-    </div>
-  );
 }
 
 export default function CompanyLookupPage({ prefillQuery, prefillToken }) {

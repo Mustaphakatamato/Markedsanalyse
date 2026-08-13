@@ -23,9 +23,7 @@ import { getTenderRequirements } from "../services/tedNoticeService";
 import {
   getMarketPlayers,
   searchActiveNotices,
-  searchWonContractsByCompany,
-  coreCompanyName,
-  normalizeForMatch
+  searchWonContractsByCompany
 } from "../services/tedService";
 import { findLatestRegnskab } from "../services/regnskabService";
 import { getIndustryBenchmark, pickClosestBenchmarkYear } from "../services/industryBenchmarkService";
@@ -38,9 +36,11 @@ import {
   ANSWER_STATUSES,
   STATUS_LABELS
 } from "../services/bidWorkspaceService";
+import { pickBestCvrMatch, resolveCompanyFinancials } from "../services/companyEnrichmentService";
 import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
 import StatusChip from "../components/ui/StatusChip";
+import MetricRow from "../components/ui/Metric";
 import { Working, SkeletonRows } from "../components/ui/Loading";
 import { formatDkkMio, formatPercent, formatDate } from "../lib/format";
 
@@ -84,32 +84,6 @@ function readStoredNotice() {
 function extractPublicationNumber(input) {
   const match = (input || "").match(/(\d{4,8}-\d{4})/);
   return match ? match[1] : null;
-}
-
-// Finder det mest sandsynlige CVR-nummer for et TED-vindernavn — samme
-// konservative matching som resten af TED-koden (tedService/tedNoticeService):
-// kun et navn der reelt matcher, aldrig det første tilfældige træf.
-function pickBestCvrMatch(candidates, name) {
-  const fullNeedle = normalizeForMatch(name);
-  const core = coreCompanyName(name);
-  const coreNeedle = core.length >= 3 ? normalizeForMatch(core) : null;
-
-  return (
-    candidates.find((k) => normalizeForMatch(k.navn) === fullNeedle) ||
-    candidates.find((k) => coreNeedle && normalizeForMatch(k.navn).includes(coreNeedle)) ||
-    null
-  );
-}
-
-async function resolveCompanyFinancials(name) {
-  const search = await søgVirksomheder(name);
-  if (search.status !== "ok") return { cvr: null, financials: null };
-
-  const match = pickBestCvrMatch(search.traf, name);
-  if (!match) return { cvr: null, financials: null };
-
-  const financials = await findLatestRegnskab(match.cvr);
-  return { cvr: match.cvr, financials };
 }
 
 // Én linje i kravbesvarelses-arbejdsområdet — dækker BÅDE egnethedskrav
@@ -1211,35 +1185,37 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
                 <SourceBadge source="cvr" />
               </div>
 
-              <div className="metric">
-                <span className="metric__label">Omsætning (seneste regnskab)</span>
-                <span className="metric__value num">
-                  {ownFinancials?.status === "ok" ? formatDkkMio(ownFinancials.topline) : "Ikke tilgængeligt"}
-                </span>
-              </div>
-              <div className="metric">
-                <span className="metric__label">Soliditetsgrad</span>
-                <span className="metric__value num">
-                  {ownFinancials?.status === "ok" ? formatPercent(ownFinancials.solvencyPct) : "–"}
-                  {ownFinancials?.status === "ok" && ownBenchmarkForYear?.solvencyPct != null && (
-                    <span className="muted small" style={{ marginLeft: 8 }}>
-                      (branchen {ownBenchmarkForYear.year}: {formatPercent(ownBenchmarkForYear.solvencyPct)})
-                    </span>
-                  )}
-                </span>
-              </div>
-              <div className="metric">
-                <span className="metric__label">Egne vundne EU-udbud (TED)</span>
-                <span className="metric__value num">
-                  {ownContracts
-                    ? `${ownContracts.total} kontrakt${ownContracts.total === 1 ? "" : "er"}${
-                        ownSingleContractValueInField > 0
-                          ? ` · ${formatDkkMio(ownSingleContractValueInField)}`
-                          : ""
-                      }`
-                    : <SkeletonRows rows={1} />}
-                </span>
-              </div>
+              <MetricRow
+                label="Omsætning (seneste regnskab)"
+                value={ownFinancials?.status === "ok" ? formatDkkMio(ownFinancials.topline) : "Ikke tilgængeligt"}
+              />
+              <MetricRow
+                label="Soliditetsgrad"
+                value={
+                  <>
+                    {ownFinancials?.status === "ok" ? formatPercent(ownFinancials.solvencyPct) : "–"}
+                    {ownFinancials?.status === "ok" && ownBenchmarkForYear?.solvencyPct != null && (
+                      <span className="muted small" style={{ marginLeft: 8 }}>
+                        (branchen {ownBenchmarkForYear.year}: {formatPercent(ownBenchmarkForYear.solvencyPct)})
+                      </span>
+                    )}
+                  </>
+                }
+              />
+              <MetricRow
+                label="Egne vundne EU-udbud (TED)"
+                value={
+                  ownContracts ? (
+                    `${ownContracts.total} kontrakt${ownContracts.total === 1 ? "" : "er"}${
+                      ownSingleContractValueInField > 0
+                        ? ` · ${formatDkkMio(ownSingleContractValueInField)}`
+                        : ""
+                    }`
+                  ) : (
+                    <SkeletonRows rows={1} />
+                  )
+                }
+              />
             </div>
           </div>
         )}
