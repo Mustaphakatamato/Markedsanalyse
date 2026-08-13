@@ -6,7 +6,7 @@
 //
 //   søgVirksomheder()  — fritekstsøgning på navn. Går mod vores EGET indeks i
 //                        Postgres, indlæst ugentligt fra Datafordelerens
-//                        fildownload (scripts/indlaes-cvr-navne.mjs).
+//                        fildownload (scripts/indlaes-cvr-indeks.mjs).
 //                        Nødvendigt fordi Datafordelerens GraphQL kun kan
 //                        filtrere strenge med "eq" og "in" — der findes ingen
 //                        "contains", så "netcompany" ville give nul træf.

@@ -15,7 +15,7 @@
 // XML'en er kun ~25 MB og parses derfor i hukommelsen med regex i stedet for
 // en fuld XML-parser — samme "ingen ekstra afhængighed hvis det kan undgås"-
 // tilgang som resten af scripts/-mappen (se csvRækker() i
-// indlaes-cvr-navne.mjs for et større eksempel på det).
+// indlaes-cvr-indeks.mjs for et større eksempel på det).
 //
 // KØRSEL: node scripts/indlaes-eu-sanktioner.mjs
 //

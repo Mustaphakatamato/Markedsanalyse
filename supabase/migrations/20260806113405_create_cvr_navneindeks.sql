@@ -1,5 +1,5 @@
 -- Navneindeks over aktive danske virksomheder, indlæst fra Datafordelerens
--- CVR-fildownload (se scripts/indlaes-cvr-navne.mjs).
+-- CVR-fildownload (se scripts/indlaes-cvr-indeks.mjs).
 --
 -- Findes fordi Datafordelerens GraphQL-tjeneste KUN kan filtrere strenge med
 -- "eq" og "in" — der er ingen "contains". Fritekstsøgning på firmanavn er

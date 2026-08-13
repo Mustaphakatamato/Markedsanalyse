@@ -148,12 +148,12 @@ src/
                små præsentationskomponenter, ingen datahentning)
   pages/       CompanyLookupPage, TenderPage, TilbudsgiverPage
 scripts/
-  indlaes-cvr-navne.mjs      Ugentlig indlæsning af navneindekset
+  indlaes-cvr-indeks.mjs     Ugentlig indlæsning af markedsindekset
   indlaes-eu-sanktioner.mjs  Ugentlig indlæsning af sanktionslisten
 supabase/
   functions/   cvr-soeg, cvr-datafordeler, ted, ted-notice, regnskab-search,
                regnskab-doc, sanktionstjek + _shared/
-  migrations/  Cache-tabeller, navneindeks og sanktionsliste
+  migrations/  Cache-tabeller, markedsindeks og sanktionsliste
 ```
 
 Appen har ingen router og ingen UI-afhængigheder — kun React og Vite. Navigation
@@ -199,29 +199,128 @@ en rettelse er en ny notice med sit eget nummer). Tabellerne har RLS slået
 til uden policies og er utilgængelige for klienten — kun funktionerne, som
 bruger service-nøglen, kan røre dem.
 
-### Navneindekset
+### Markedsindekset
 
-Appens vigtigste indgang er at skrive et firmanavn, men Datafordeleren kan
-kun matche navne præcist. Derfor holder vi et eget indeks over samtlige
-**870.000 aktive danske virksomheder** i `cvr_virksomhed_indeks` — kun
-CVR-nummer og navn, nok til at oversætte et navn til et nummer. Resten hentes
-på nummeret, hvor der ingen begrænsning er.
+Tabellen `cvr_virksomhed_indeks` dækker samtlige **870.564 aktive danske
+virksomheder** og løser to ting, Datafordeleren ikke kan svare på direkte.
+Dens GraphQL kan kun filtrere strenge med `eq` og `in` — ingen `contains` —
+og tillader kun ét rodfelt pr. forespørgsel:
 
-Søgningen bruger et trigram-indeks, så delvise navne og stavefejl rammer:
-`netcompny` finder stadig Netcompany A/S. Rangeringen ligger i SQL-funktionen
-`soeg_virksomhed()`, så databasen kan bruge indekset til både at filtrere og
-sortere. Indekset fylder 174 MB.
+1. **Navnesøgning.** Appens vigtigste indgang er at skrive et firmanavn.
+   Trigram-indekset gør at delvise navne og stavefejl rammer: `netcompny`
+   finder stadig Netcompany A/S. Rangeringen ligger i `soeg_virksomhed()`,
+   så databasen kan bruge indekset til både at filtrere og sortere.
+2. **Markedsafdækning.** `soeg_marked()` og `marked_statistik()` finder
+   populationen i et sæt brancher, valgfrit afgrænset på kommune. Det er
+   den eneste kilde i appen der viser hele markedet — TED kender kun dem,
+   der har vundet et EU-udbud før, hvilket systematisk skjuler mindre og
+   nye leverandører.
 
-Data indlæses med [`scripts/indlaes-cvr-navne.mjs`](scripts/indlaes-cvr-navne.mjs):
+Indekset holder navn, hovedbranche, bibrancher, kommune, postnummer og
+selskabsform. Dækningen er 100 % på alle felter undtagen bibrancher, som kun
+10,7 % af virksomhederne har. Detaljer (ansatte, adresse, kreditstatus)
+hentes stadig pr. CVR-nummer, hvor der ingen begrænsning er.
+
+**Branchekoderne er DB25 (NACE Rev. 2.1), ikke DB07.** IT-området blev
+omstruktureret ved overgangen: `621000` Computerprogrammering og `622000`
+Computerkonsulentbistand har afløst de gamle `620100`/`620200`. Et par
+hundrede virksomheder står stadig med efterladte DB07-koder. En hardkodet
+DB07-kode giver derfor et tomt marked uden at fejle synligt.
+
+Data indlæses med [`scripts/indlaes-cvr-indeks.mjs`](scripts/indlaes-cvr-indeks.mjs):
 
 ```bash
-node scripts/indlaes-cvr-navne.mjs
+node scripts/indlaes-cvr-indeks.mjs             # normal ugentlig kørsel
+node scripts/indlaes-cvr-indeks.mjs --toerloeb  # læs og tæl, skriv intet
 ```
 
 Scriptet kræver `DATAFORDELER_API_KEY` og `SUPABASE_SERVICE_ROLE_KEY` i `.env`.
-Det kan ikke køre som Edge Function — filerne fylder 567 MB udpakket, mod 256 MB
-tilgængelig hukommelse. Datafordeleren gendanner filerne natten til lørdag og
-gemmer dem syv dage, så en ugentlig kørsel er passende.
+Det henter fem bulkfiler — Virksomhed, Navn, Branche, Adressering og
+Virksomhedsform — der alle joiner på `CVREnhedsId`. Kør altid uden `--behold`,
+så alle fem stammer fra samme ugentlige snapshot; blandes to snapshots, får
+nogle virksomheder branche uden navn.
+
+Kør `--toerloeb` efter ændringer i parsingen. Den rapporterer dækningsgrad pr.
+felt uden at skrive, og falder én af dem markant, har kilden ændret et
+kolonnenavn — det skal opdages før skrivningen, fordi en rigtig kørsel rydder
+de rækker den ikke rørte.
+
+Skrivningen sker i batches på 500 med op til fem forsøg pr. batch. Det er ikke
+overforsigtighed: med fire indekser at vedligeholde — heriblandt et GIN-indeks
+— rammer en upsert nu og da Supabases `statement_timeout` på 8 sekunder.
+Under indlæsningen 13. august skete det fire gange ud af ~1.740 batches, og
+hver enkelt lykkedes ved andet forsøg. Upserten er idempotent
+(`merge-duplicates` på primærnøglen), så et gentaget forsøg er ufarligt.
+
+Scriptet kan ikke køre som Edge Function — filerne fylder over 1 GB udpakket,
+mod 256 MB tilgængelig hukommelse. Datafordeleren gendanner filerne natten til
+lørdag og gemmer dem syv dage, så en ugentlig kørsel er passende.
+
+**Efter hver indlæsning skal markedsvisningerne genopbygges:**
+
+```sql
+refresh materialized view public.marked_dim;
+refresh materialized view public.branche_tekst;
+analyze public.marked_dim;
+```
+
+Det tager omkring 32 sekunder og kan derfor ikke udløses af scriptet selv —
+PostgREST afbryder efter 8. Springes trinnet over, svarer markedsopslagene på
+forrige uges data uden at fejle, hvilket er værre end en fejl. Scriptet
+minder om det til sidst.
+
+### Hvorfor markedsopslagene går gennem `marked_dim`
+
+`soeg_marked()` og `marked_statistik()` læser ikke direkte fra
+`cvr_virksomhed_indeks`, men fra det materialiserede view `marked_dim`, som
+holder én smal række pr. (virksomhed, branchekode) — både hovedbranche og
+bibrancher, 987.202 rækker i alt.
+
+Målt på produktionsdata tog kernescanningen 2.689 ms direkte mod indekstabellen
+og 123 ms mod `marked_dim`. Forskellen er ikke indeksering — begge planer bruger
+indeks korrekt — men at 33.727 **brede** rækker skal hentes fra 16.030 diskblokke,
+mod 9.898 blokke for de smalle. Hele `marked_statistik()` kører nu på ~200 ms.
+
+Optællingen sker på virksomhedsniveau med `count(distinct)`, ikke som en sum af
+antal pr. branchekode. En virksomhed kan ramme markedet gennem både sin
+hovedbranche og en bibranche, og ville ellers tælle med flere gange.
+
+`prBranche` grupperer på virksomhedens **egen** hovedbranche, ikke på de søgte
+koder. Det er bevidst: søger man på fire IT-koder og får holdingselskaber,
+designbureauer og ingeniørrådgivere med i svaret, er det signalet om at
+markedet er bredere end de koder man startede med.
+
+### Fra CPV til branchekoder
+
+Der findes ingen officiel oversættelse mellem CPV (hvad der købes) og DB25
+(hvad en virksomhed laver). `brancheforslag_for_navne()` udleder den i stedet
+af data, vi allerede har: slå TED-vinderne i et CPV-felt op i CVR, og se hvilke
+brancher de faktisk har. Det er efterprøvbart og kan vises for ordregiveren.
+
+Målt på de 100 seneste danske tildelinger pr. kode (2026-08-13):
+
+| CPV | Navne matchet | Peger på |
+|---|---|---|
+| 72222300 IT-drift | 67 % | `622000` + `621000` = 65 % |
+| 45000000 Bygge/anlæg | 93 % | `410000` 21 %, derefter fagene |
+| 79600000 Rekruttering | 78 % | `782000` 27 % |
+| 90500000 Affald | 92 % | `494100` + `382100` + `381100` = 40 % |
+
+**Forslaget må aldrig anvendes automatisk.** To fejlkilder er systematiske:
+vinderen er ofte moderselskabet, så holdingbrancher (`642120`, `649990`) dukker
+op i stedet for driftsbranchen — og under rekruttering ligger `464620`
+Engroshandel med hospitalsartikler på 21 % uden en oplagt forklaring.
+Ordregiveren skal se andelene og kunne rette i dem.
+
+Navnematchningen er bevidst konservativ: kun eksakt match på normaliseret navn
+eller kernenavn (navnet uden selskabsform). Fuzzy match ville trække tilfældige
+brancher ind i fordelingen. Begge sider sammenlignes i begge former, fordi
+selskabsformen kan mangle hos enten TED eller CVR — det alene hævede
+match-raten for bygge/anlæg fra 76 % til 93 %.
+
+Normaliseringen ligger i SQL (`navn_normaliser`, `navn_kerne`) og ikke kun i
+`tedService.js`, fordi opslaget skal kunne bruge et udtryksindeks. De to
+implementeringer skal holdes ens — der er en paritetstest for netop det.
 
 XBRL-parsingen bliver i browseren med vilje: Edge Functions har kun 2s CPU-tid
 pr. request, hvilket ikke rækker til et større regnskabsdokument. Proxying er

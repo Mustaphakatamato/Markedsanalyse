@@ -3,7 +3,7 @@
 // Findes fordi Datafordelerens GraphQL-tjeneste kun kan filtrere strenge med
 // "eq" og "in" — der er ingen "contains", så "netcompany" ville give nul
 // resultater dér. Indekset indlæses ugentligt fra Datafordelerens
-// fildownload (se scripts/indlaes-cvr-navne.mjs).
+// fildownload (se scripts/indlaes-cvr-indeks.mjs).
 //
 // Rangeringen ligger i SQL-funktionen soeg_virksomhed(), så databasen kan
 // bruge trigram-indekset til både at filtrere og sortere.
