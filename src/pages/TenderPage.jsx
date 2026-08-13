@@ -1,440 +1,581 @@
 import { useEffect, useState } from "react";
 import { useProjects } from "../context/ProjectsContext";
-import { cpvOptions } from "../data/cpvOptions";
-import { suppliers, getRelevanceScore } from "../data/suppliers";
+import { hentMarkedsstatistik, soegMarked, beregnKoncentration } from "../services/markedService";
 import { searchByCPV } from "../services/tedService";
+import CpvVaelger from "../components/marked/CpvVaelger";
+import BrancheVaelger from "../components/marked/BrancheVaelger";
+import Markedsbillede from "../components/marked/Markedsbillede";
+import Kandidatliste from "../components/marked/Kandidatliste";
 import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
-import { Working, SkeletonRows } from "../components/ui/Loading";
+import StatusChip from "../components/ui/StatusChip";
+import { SkeletonRows } from "../components/ui/Loading";
+import { formatDkkMio, formatDanishDate, formatAmount } from "../lib/format";
 
-function formatDate(isoDate) {
-  return isoDate ? isoDate.slice(0, 10) : "–";
+// Udbud & markedsanalyse — ordregiverens flow før et udbud.
+//
+// Rækkefølgen følger den faktiske arbejdsgang: hvad skal købes (CPV) → hvilket
+// marked er det (brancher) → hvor stort og hvordan ser det ud → hvem kan
+// inviteres til dialog → dokumentation.
+//
+// Det er bevidst IKKE en trinvis guide, der låser rækkefølgen. En
+// markedsanalyse laves ikke i ét stræk: man vender tilbage, retter
+// branchekoder når markedsbilledet ser forkert ud, og udvider shortlisten
+// efter en samtale. Derfor er alle sektioner åbne hele tiden, og udbuddet
+// gemmes ved hver ændring.
+
+function tolkVaerdi(tekst) {
+  const rent = String(tekst ?? "").replace(/\./g, "").replace(",", ".").trim();
+  if (!rent) return null;
+  const n = Number(rent.match(/-?\d+(\.\d+)?/)?.[0]);
+  if (!Number.isFinite(n)) return null;
+  if (/mia|milliard/i.test(tekst)) return Math.round(n * 1_000_000_000);
+  if (/mio|million/i.test(tekst)) return Math.round(n * 1_000_000);
+  return Math.round(n);
 }
 
-function EmptyForm() {
-  return {
-    title: "",
-    cpvCode: cpvOptions[0].code,
-    description: "",
-    deadline: "",
-    estimatedValue: ""
-  };
-}
+function OpretForm({ onOpret, onFortryd }) {
+  const [titel, setTitel] = useState("");
+  const [beskrivelse, setBeskrivelse] = useState("");
+  const [cpvKoder, setCpvKoder] = useState([]);
+  const [vaerdi, setVaerdi] = useState("");
+  const [deadline, setDeadline] = useState("");
 
-function CreateProjectForm({ onCreate, onCancel }) {
-  const [form, setForm] = useState(EmptyForm);
-
-  const update = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const submit = () => {
-    if (!form.title.trim()) return;
-    onCreate(form);
-  };
+  const kanOprette = titel.trim().length > 0 && cpvKoder.length > 0;
 
   return (
     <section className="card">
       <div className="section-header">
         <div>
-          <p className="eyebrow">Nyt udbud</p>
-          <h3>Opret nyt udbud</h3>
+          <h3>Nyt udbud</h3>
+          <p className="muted small">
+            Titel og mindst én CPV-kode er nok til at komme i gang. Alt kan rettes bagefter.
+          </p>
         </div>
       </div>
 
       <div className="stack">
-        <div>
-          <label htmlFor="tender-title">Titel</label>
+        <div className="field">
+          <label htmlFor="udbud-titel">Titel</label>
           <input
-            id="tender-title"
+            id="udbud-titel"
             className="input"
-            value={form.title}
-            onChange={update("title")}
-            placeholder="Fx Drift af IT-infrastruktur 2027"
+            placeholder="Fx Drift og vedligehold af kommunens IT-arbejdspladser"
+            value={titel}
+            onChange={(e) => setTitel(e.target.value)}
           />
         </div>
 
-        <div className="grid two-col" style={{ gap: 16 }}>
-          <div>
-            <label htmlFor="tender-cpv">CPV / marked</label>
-            <select id="tender-cpv" className="input" value={form.cpvCode} onChange={update("cpvCode")}>
-              {cpvOptions.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.code} · {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="tender-deadline">Deadline</label>
+        <CpvVaelger valgte={cpvKoder} onAendret={setCpvKoder} />
+
+        <div className="grid two-col">
+          <div className="field">
+            <label htmlFor="udbud-vaerdi">Anslået værdi (valgfri)</label>
             <input
-              id="tender-deadline"
+              id="udbud-vaerdi"
+              className="input"
+              placeholder="Fx 25 mio."
+              value={vaerdi}
+              onChange={(e) => setVaerdi(e.target.value)}
+            />
+            <p className="muted small" style={{ margin: "6px 0 0" }}>
+              {tolkVaerdi(vaerdi) != null
+                ? `Tolkes som ${formatAmount(tolkVaerdi(vaerdi))} kr.`
+                : "Skriv fx “25 mio.” eller “25000000”."}
+            </p>
+          </div>
+
+          <div className="field">
+            <label htmlFor="udbud-deadline">Forventet udbudsdato (valgfri)</label>
+            <input
+              id="udbud-deadline"
               className="input"
               type="date"
-              value={form.deadline}
-              onChange={update("deadline")}
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
             />
           </div>
         </div>
 
-        <div>
-          <label htmlFor="tender-description">Beskrivelse</label>
+        <div className="field">
+          <label htmlFor="udbud-beskrivelse">Beskrivelse (valgfri)</label>
           <textarea
-            id="tender-description"
-            className="textarea"
-            value={form.description}
-            onChange={update("description")}
-            placeholder="Kort om opgaven, omfang og krav"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="tender-value">Anslået værdi (valgfri)</label>
-          <input
-            id="tender-value"
+            id="udbud-beskrivelse"
             className="input"
-            value={form.estimatedValue}
-            onChange={update("estimatedValue")}
-            placeholder="Fx 25 mio. DKK"
+            rows={3}
+            placeholder="Hvad skal anskaffes, og hvad er formålet?"
+            value={beskrivelse}
+            onChange={(e) => setBeskrivelse(e.target.value)}
           />
         </div>
 
         <div className="button-row">
-          <button className="btn btn-primary" onClick={submit} disabled={!form.title.trim()}>
-            <Icon name="spark" size={14} />
-            Opret og lav markedsanalyse
+          <button
+            className="btn btn-primary"
+            disabled={!kanOprette}
+            onClick={() =>
+              onOpret({
+                titel,
+                beskrivelse,
+                cpvKoder,
+                anslaaetVaerdi: tolkVaerdi(vaerdi),
+                deadline
+              })
+            }
+          >
+            <Icon name="plus" size={14} />
+            Opret udbud
           </button>
-          <button className="btn btn-secondary" onClick={onCancel}>
-            Annuller
+          <button className="btn btn-ghost" onClick={onFortryd}>
+            Fortryd
           </button>
+          {!kanOprette && (
+            <span className="muted small">Titel og mindst én CPV-kode mangler.</span>
+          )}
         </div>
       </div>
     </section>
   );
 }
 
-function ProjectDetail({ project, onBack, onDelete, onGoToCompany }) {
-  const market = cpvOptions.find((c) => c.code === project.cpvCode) || cpvOptions[0];
-  const candidateSuppliers = [...suppliers]
-    .map((s) => ({ ...s, score: getRelevanceScore(s, project.cpvCode) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4);
+function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, onSlet }) {
+  const [statistik, setStatistik] = useState(null);
+  const [statistikStatus, setStatistikStatus] = useState("idle");
+  const [statistikFejl, setStatistikFejl] = useState(null);
+
+  const [kandidater, setKandidater] = useState([]);
+  const [kandidatStatus, setKandidatStatus] = useState("idle");
+  const [kandidatFejl, setKandidatFejl] = useState(null);
 
   const [tedNotices, setTedNotices] = useState([]);
-  const [tedLoading, setTedLoading] = useState(true);
-  const [tedError, setTedError] = useState(null);
+  const [tedStatus, setTedStatus] = useState("idle");
 
+  const [redigerer, setRedigerer] = useState(false);
+  // Tælles op af "Prøv igen". Uden den ville et gentaget forsøg ikke ændre
+  // noget, effekten afhænger af — branchekoderne er de samme — og knappen
+  // ville se ud som om den virkede uden at gøre noget.
+  const [forsoeg, setForsoeg] = useState(0);
+
+  const branchekoder = udbud.branchekoder.map((b) => b.kode);
+  const branchenoegle = branchekoder.join(",");
+  const kommunenoegle = udbud.kommunekoder.join(",");
+
+  // Markedsbillede og kandidater hentes samlet, når branchekoderne ændrer sig.
+  // cancelled-flaget beskytter mod at et langsomt svar fra et tidligere sæt
+  // koder overskriver et nyere — brugeren retter ofte koderne flere gange.
   useEffect(() => {
-    let cancelled = false;
-    setTedLoading(true);
-    setTedError(null);
+    if (!branchekoder.length) {
+      setStatistik(null);
+      setKandidater([]);
+      setStatistikStatus("idle");
+      setKandidatStatus("idle");
+      return;
+    }
 
-    searchByCPV(project.cpvCode, { limit: 8 })
+    let annulleret = false;
+    setStatistikStatus("henter");
+    setKandidatStatus("henter");
+
+    hentMarkedsstatistik(branchekoder, { kommunekoder: udbud.kommunekoder })
       .then((data) => {
-        if (!cancelled) setTedNotices(data.notices);
+        if (annulleret) return;
+        setStatistik(data);
+        setStatistikStatus("faerdig");
       })
       .catch((err) => {
-        if (!cancelled) setTedError(err.message || "Kunne ikke hente TED-data.");
+        if (annulleret) return;
+        setStatistikFejl(err.message || "Kunne ikke hente markedsbilledet.");
+        setStatistikStatus("fejl");
+      });
+
+    soegMarked(branchekoder, { kommunekoder: udbud.kommunekoder, maks: 200 })
+      .then((data) => {
+        if (annulleret) return;
+        setKandidater(data);
+        setKandidatStatus("faerdig");
       })
-      .finally(() => {
-        if (!cancelled) setTedLoading(false);
+      .catch((err) => {
+        if (annulleret) return;
+        setKandidatFejl(err.message || "Kunne ikke hente kandidater.");
+        setKandidatStatus("fejl");
       });
 
     return () => {
-      cancelled = true;
+      annulleret = true;
     };
-  }, [project.cpvCode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchenoegle, kommunenoegle, forsoeg]);
+
+  // Rigtige kontrakttildelinger i CPV-feltet. Beholdt fra den gamle side —
+  // det var det eneste panel dér, der byggede på rigtige data.
+  useEffect(() => {
+    const koder = udbud.cpvKoder.map((c) => c.kode);
+    if (!koder.length) return;
+
+    let annulleret = false;
+    setTedStatus("henter");
+    searchByCPV(koder[0], { limit: 8 })
+      .then((data) => {
+        if (annulleret) return;
+        setTedNotices(data.notices);
+        setTedStatus("faerdig");
+      })
+      .catch(() => !annulleret && setTedStatus("fejl"));
+
+    return () => {
+      annulleret = true;
+    };
+  }, [udbud.cpvKoder.map((c) => c.kode).join(",")]);
+
+  const koncentration = beregnKoncentration(statistik);
 
   return (
-    <main className="page">
-      {/* Det valgte udbud er sidens anker og får konsolfladen, på samme
-          måde som søgefeltet gør det på de to andre flows. */}
+    <>
       <section className="console">
-        <div className="space-between mobile-stack">
-          <div>
-            <p className="eyebrow">Udbud</p>
-            <h2 className="hero-title-sm">{project.title}</h2>
-            <p className="lede">{project.description || "Ingen beskrivelse"}</p>
+        <div className="console-head">
+          <p className="eyebrow">Markedsanalyse</p>
+          <h3>{udbud.titel}</h3>
+          {udbud.beskrivelse && <p className="lede">{udbud.beskrivelse}</p>}
+        </div>
+
+        <div className="console-bay">
+          <div className="tag-row">
+            {udbud.cpvKoder.map((c) => (
+              <span className="tag tag--code" key={c.kode} title={c.tekst || ""}>
+                <span className="tag__key">CPV</span>
+                {c.kode}
+                {c.tekst && <span className="tag__tekst"> {c.tekst}</span>}
+              </span>
+            ))}
+            {udbud.anslaaetVaerdi != null && (
+              <span className="tag">{formatDkkMio(udbud.anslaaetVaerdi)}</span>
+            )}
+            {udbud.deadline && <span className="tag">Udbud {formatDanishDate(udbud.deadline)}</span>}
+            {udbud.vaerdiRaa && (
+              <span className="tag tag--warn" title="Værdien kunne ikke tolkes som et tal ved opgraderingen">
+                Værdi: “{udbud.vaerdiRaa}” — ret den
+              </span>
+            )}
           </div>
-          <div className="button-row">
-            <button className="btn btn-secondary btn-sm" onClick={onBack}>
+
+          <div className="button-row no-print" style={{ marginTop: 14 }}>
+            <button className="btn btn-ghost btn-sm" onClick={onTilbage}>
               <Icon name="back" size={13} />
               Alle udbud
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => onDelete(project.id)}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setRedigerer((v) => !v)}>
+              <Icon name="doc" size={13} />
+              {redigerer ? "Luk redigering" : "Redigér grundlag"}
+            </button>
+            <button className="btn btn-secondary btn-sm" onClick={() => window.print()}>
+              <Icon name="table" size={13} />
+              Udskriv som bilag
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={onSlet}>
               Slet udbud
             </button>
           </div>
-        </div>
 
-        <div className="tag-row">
-          <span className="tag tag--code">
-            <span className="tag__key">CPV</span>
-            {market.code}
-          </span>
-          <span className="tag">{market.label}</span>
-          {project.deadline && (
-            <span className="tag tag--code">
-              <span className="tag__key">Deadline</span>
-              {project.deadline}
+          <div className="card-foot">
+            <span className="eyebrow" style={{ margin: 0 }}>
+              Kilder
             </span>
-          )}
-          {project.estimatedValue && (
-            <span className="tag">
-              <span className="tag__key">Anslået</span>
-              {project.estimatedValue}
-            </span>
-          )}
+            <div className="source-row">
+              <SourceBadge source="cvr" label="CVR-register" />
+              <SourceBadge source="ted" />
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="grid two-one">
-        <div className="card">
+      {redigerer && (
+        <section className="card no-print">
           <div className="section-header">
-            <div>
-              <h3>Markedsanalyse</h3>
-              <p className="muted small">Nøgletal for CPV-området {market.code}.</p>
-            </div>
-            <SourceBadge source="demo" label="Fabrikeret demo-data" />
+            <h3>Udbuddets grundlag</h3>
           </div>
-
-          <div className="grid two-col" style={{ gap: 12 }}>
-            <div className="stat">
-              <p className="stat__label">Typisk kontraktstørrelse</p>
-              <span className="stat__value">{market.avgContract}</span>
-            </div>
-            <div className="stat">
-              <p className="stat__label">Markedsmodenhed</p>
-              <span className="stat__value">{market.maturity}</span>
-            </div>
-            <div className="stat">
-              <p className="stat__label">Trend</p>
-              <span className="stat__value">{market.trend}</span>
-            </div>
-            <div className="stat">
-              <p className="stat__label">Kandidatleverandører</p>
-              <span className="stat__value">{candidateSuppliers.length} fundet</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="section-header">
-            <h3>Kandidat-leverandører</h3>
-            <SourceBadge source="demo" label="Demo-data" />
-          </div>
-
           <div className="stack">
-            {candidateSuppliers.map((supplier) => (
-              <div className="subcard" key={supplier.id}>
-                <div className="space-between">
-                  <strong className="text-sm">{supplier.name}</strong>
-                  <span className="score">
-                    {supplier.score}
-                    <span>/10</span>
-                  </span>
-                </div>
-                <div className="score-bar" aria-hidden="true">
-                  <i style={{ width: `${Math.max(0, Math.min(10, supplier.score)) * 10}%` }} />
-                </div>
-                <p className="muted small" style={{ margin: "10px 0 12px" }}>
-                  {supplier.description}
-                </p>
-                <button className="btn btn-secondary btn-sm" onClick={() => onGoToCompany(supplier.name)}>
-                  Se virksomhedsprofil
-                  <Icon name="arrow" size={13} />
-                </button>
-              </div>
-            ))}
+            <div className="field">
+              <label htmlFor="rediger-titel">Titel</label>
+              <input
+                id="rediger-titel"
+                className="input"
+                value={udbud.titel}
+                onChange={(e) => opdater({ titel: e.target.value })}
+              />
+            </div>
+            <CpvVaelger
+              valgte={udbud.cpvKoder}
+              onAendret={(cpvKoder) => opdater({ cpvKoder })}
+            />
+            <div className="field">
+              <label htmlFor="rediger-vaerdi">Anslået værdi (kr.)</label>
+              <input
+                id="rediger-vaerdi"
+                className="input num"
+                inputMode="numeric"
+                value={udbud.anslaaetVaerdi ?? ""}
+                onChange={(e) =>
+                  opdater({
+                    anslaaetVaerdi: e.target.value.trim() ? Number(e.target.value.replace(/\D/g, "")) : null,
+                    vaerdiRaa: null
+                  })
+                }
+              />
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      <section className={`card ${tedLoading ? "is-working" : ""}`}>
+      <BrancheVaelger
+        cpvKoder={udbud.cpvKoder}
+        valgte={udbud.branchekoder}
+        onAendret={(branchekoder) => opdater({ branchekoder })}
+      />
+
+      {!branchekoder.length && (
+        <section className="empty-state">
+          <span className="empty-state__icon">
+            <Icon name="scales" size={22} />
+          </span>
+          <h4>Vælg branchekoder for at se markedet</h4>
+          <p className="muted">
+            Markedsbilledet og kandidatlisten bygger på de branchekoder, du bekræfter
+            ovenfor — ikke på CPV-koden direkte. Der findes ingen officiel oversættelse
+            mellem de to, så valget skal være dit.
+          </p>
+        </section>
+      )}
+
+      <Markedsbillede
+        statistik={statistik}
+        koncentration={koncentration}
+        status={statistikStatus === "idle" ? null : statistikStatus}
+        fejl={statistikFejl}
+        onPrøvIgen={() => setForsoeg((n) => n + 1)}
+      />
+
+      <Kandidatliste
+        virksomheder={kandidater}
+        status={kandidatStatus === "idle" ? null : kandidatStatus}
+        fejl={kandidatFejl}
+        shortliste={udbud.shortliste}
+        onSkiftShortliste={skiftShortliste}
+        onGoToCompany={onGoToCompany}
+        onPrøvIgen={() => setForsoeg((n) => n + 1)}
+      />
+
+      <section className={`card ${tedStatus === "henter" ? "is-working" : ""}`}>
         <div className="section-header">
           <div>
-            <h3>Seneste TED-kontrakter i dette marked</h3>
-            <p className="muted small">Rigtige, nylige kontrakttildelinger inden for {market.label}.</p>
+            <h3>Seneste kontrakttildelinger i markedet</h3>
+            <p className="muted small">
+              Rigtige EU-udbud under {udbud.cpvKoder[0]?.kode}. Viser hvad der faktisk er
+              købt, og til hvilke beløb.
+            </p>
           </div>
           <SourceBadge source="ted" />
         </div>
 
-        {tedLoading && (
-          <div className="stack">
-            <Working>Henter kontrakttildelinger fra TED…</Working>
-            <SkeletonRows rows={4} />
+        {tedStatus === "henter" && <SkeletonRows rows={4} />}
+        {tedStatus === "fejl" && (
+          <p className="muted small">Kunne ikke hente kontrakttildelinger fra TED.</p>
+        )}
+        {tedStatus === "faerdig" && !tedNotices.length && (
+          <p className="muted small">
+            Ingen tildelinger fundet. TED dækker kun udbud over EU's tærskelværdi.
+          </p>
+        )}
+
+        {tedNotices.length > 0 && (
+          <div className="scroll-x">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Vinder</th>
+                  <th>Ordregiver</th>
+                  <th>Dato</th>
+                  <th style={{ textAlign: "right" }}>Værdi</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {tedNotices.map((n) => (
+                  <tr key={n.id}>
+                    <td>
+                      {n.winnerName || "Ukendt vinder"}
+                      {n.isMultiWinner && (
+                        <span className="pill" style={{ marginLeft: 6 }}>
+                          {n.winnerCount} vindere
+                        </span>
+                      )}
+                    </td>
+                    <td className="muted">{n.buyerName || "–"}</td>
+                    <td className="num">{formatDanishDate(n.date)}</td>
+                    <td className="num" style={{ textAlign: "right" }}>
+                      {n.value != null && !n.isMultiWinner
+                        ? `${formatAmount(n.value)} ${n.currency || ""}`
+                        : n.isMultiWinner
+                          ? "rammeaftale"
+                          : "–"}
+                    </td>
+                    <td>
+                      {n.url && (
+                        <a href={n.url} target="_blank" rel="noreferrer" className="small">
+                          Notice <Icon name="external" size={11} />
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {tedError && (
-          <div className="empty-state">
-            <p className="muted">{tedError}</p>
-          </div>
-        )}
-
-        {!tedLoading && !tedError && tedNotices.length === 0 && (
-          <div className="empty-state">
-            <span className="empty-state__icon">
-              <Icon name="scales" size={22} />
-            </span>
-            <h4>Ingen nylige kontrakter fundet for denne CPV-kode</h4>
-          </div>
-        )}
-
-        <div className="stack">
-          {tedNotices.map((notice) => (
-            <div className="subcard" key={notice.id}>
-              <div className="space-between mobile-stack">
-                <div style={{ minWidth: 0 }}>
-                  <strong>{notice.winnerName || "Ukendt vinder"}</strong>
-                  <div className="tag-row" style={{ marginTop: 6 }}>
-                    <span className="tag">
-                      <span className="tag__key">Ordregiver</span>
-                      {notice.buyerName || "Ukendt"}
-                    </span>
-                    <span className="tag tag--code">
-                      <span className="tag__key">Dato</span>
-                      {formatDate(notice.date)}
-                    </span>
-                  </div>
-                </div>
-                <div className="align-right" style={{ flex: "none" }}>
-                  <p className="stat__label">Værdi</p>
-                  <span className="stat__value num">
-                    {notice.value != null
-                      ? `${notice.value.toLocaleString("da-DK")} ${notice.currency || ""}`.trim()
-                      : "Ikke oplyst"}
-                  </span>
-                  {notice.url && (
-                    <div className="button-row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
-                      <a
-                        href={notice.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="btn btn-sm btn-secondary"
-                      >
-                        Se notice
-                        <Icon name="external" size={13} />
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <ul className="trace" style={{ marginTop: 12 }}>
+          <li>
+            For rammeaftaler med flere vindere vises intet beløb: notice'ens værdi er
+            rammens samlede loft, ikke hvad den enkelte vinder fik.
+          </li>
+        </ul>
       </section>
-    </main>
+    </>
   );
 }
 
 export default function TenderPage({ onGoToCompany }) {
-  const { projects, createProject, deleteProject } = useProjects();
-  const [mode, setMode] = useState("list"); // list | create
-  const [selectedId, setSelectedId] = useState(null);
+  const { udbud, gemtFejl, opretUdbud, opdaterUdbud, sletUdbud, skiftShortliste } = useProjects();
+  const [tilstand, setTilstand] = useState("liste");
+  const [valgtId, setValgtId] = useState(null);
 
-  const selectedProject = projects.find((p) => p.id === selectedId);
+  const valgt = udbud.find((u) => u.id === valgtId) || null;
 
-  if (selectedProject) {
+  if (valgt) {
     return (
-      <ProjectDetail
-        project={selectedProject}
-        onBack={() => setSelectedId(null)}
-        onDelete={(id) => {
-          deleteProject(id);
-          setSelectedId(null);
-        }}
-        onGoToCompany={onGoToCompany}
-      />
+      <main className="page">
+        {gemtFejl && (
+          <div className="verdict verdict--alert no-print">
+            <span className="verdict__icon">
+              <Icon name="alert" size={18} />
+            </span>
+            <div className="verdict__body">
+              <p className="verdict__label">Ikke gemt</p>
+              <p className="verdict__value">{gemtFejl}</p>
+            </div>
+          </div>
+        )}
+        <Analyse
+          udbud={valgt}
+          opdater={(aendringer) => opdaterUdbud(valgt.id, aendringer)}
+          skiftShortliste={(cvr) => skiftShortliste(valgt.id, cvr)}
+          onGoToCompany={onGoToCompany}
+          onTilbage={() => setValgtId(null)}
+          onSlet={() => {
+            sletUdbud(valgt.id);
+            setValgtId(null);
+          }}
+        />
+      </main>
     );
   }
 
   return (
     <main className="page">
-      {/* Samme konsolflade som de to andre flows — se .console i index.css. */}
       <section className="console">
-        <div className="section-header">
-          <div className="console-head" style={{ marginBottom: 0 }}>
-            <p className="eyebrow">Markedsbillede</p>
-            <h3>Udbud &amp; markedsanalyse</h3>
-            <p className="lede">
-              Opret et udbud og få et markedsbillede for CPV-området: typiske kontraktstørrelser,
-              kandidat-leverandører og reelle, nylige TED-tildelinger.
-            </p>
-          </div>
-          {mode === "list" && (
-            <button className="btn btn-primary" onClick={() => setMode("create")}>
+        <div className="console-head">
+          <p className="eyebrow">Markedsbillede</p>
+          <h3>Udbud &amp; markedsanalyse</h3>
+          <p className="lede">
+            Afdæk leverandørmarkedet før et udbud. Fra CPV-kode til de brancher markedet
+            reelt består af, hvor stort det er, og hvem der kan inviteres til
+            markedsdialog — bygget på hele CVR-registret, ikke kun på dem der har vundet
+            et EU-udbud før.
+          </p>
+        </div>
+
+        <div className="console-bay">
+          <div className="button-row">
+            <button
+              className="btn btn-primary"
+              onClick={() => setTilstand(tilstand === "opret" ? "liste" : "opret")}
+            >
               <Icon name="plus" size={14} />
               Opret nyt udbud
             </button>
-          )}
-        </div>
+          </div>
 
-        <div className="card-foot">
-          <span className="eyebrow" style={{ margin: 0 }}>
-            Kilder
-          </span>
-          <div className="source-row">
-            <SourceBadge source="ted" />
-            <SourceBadge source="demo" label="Markedsnøgletal og kandidater" />
+          <div className="card-foot">
+            <span className="eyebrow" style={{ margin: 0 }}>
+              Kilder
+            </span>
+            <div className="source-row">
+              <SourceBadge source="cvr" label="CVR-register" />
+              <SourceBadge source="ted" />
+            </div>
           </div>
         </div>
       </section>
 
-      {mode === "create" && (
-        <CreateProjectForm
-          onCancel={() => setMode("list")}
-          onCreate={(form) => {
-            const project = createProject({
-              ...form,
-              estimatedValue: form.estimatedValue.trim() || null
-            });
-            setMode("list");
-            setSelectedId(project.id);
+      {tilstand === "opret" && (
+        <OpretForm
+          onFortryd={() => setTilstand("liste")}
+          onOpret={(felter) => {
+            const nyt = opretUdbud(felter);
+            setTilstand("liste");
+            setValgtId(nyt.id);
           }}
         />
       )}
 
-      {mode === "list" && (
-        <section>
-          {projects.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-state__icon">
-                <Icon name="doc" size={22} />
-              </span>
-              <h4>Ingen udbud oprettet endnu</h4>
-              <p className="muted">Klik "Opret nyt udbud" for at komme i gang.</p>
-            </div>
-          ) : (
-            <div className="grid two-col">
-              {projects.map((project) => {
-                const market = cpvOptions.find((c) => c.code === project.cpvCode);
-                return (
-                  <div className="card supplier-card" key={project.id}>
-                    <div>
-                      <h4>{project.title}</h4>
-                      <p className="muted small" style={{ margin: 0 }}>
-                        {project.description || "Ingen beskrivelse"}
-                      </p>
-                    </div>
-                    <div className="tag-row" style={{ margin: 0 }}>
-                      <span className="tag">{market?.label || project.cpvCode}</span>
-                      {project.deadline && (
-                        <span className="tag tag--code">
-                          <span className="tag__key">Deadline</span>
-                          {project.deadline}
-                        </span>
-                      )}
-                    </div>
-                    <div className="button-row" style={{ marginTop: "auto" }}>
-                      <button className="btn btn-primary btn-sm" onClick={() => setSelectedId(project.id)}>
-                        Åbn markedsanalyse
-                        <Icon name="arrow" size={13} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      {!udbud.length && tilstand !== "opret" && (
+        <section className="empty-state">
+          <span className="empty-state__icon">
+            <Icon name="inbox" size={22} />
+          </span>
+          <h4>Ingen udbud endnu</h4>
+          <p className="muted">
+            Opret et udbud med en CPV-kode, så finder vi markedet bag den.
+          </p>
+        </section>
+      )}
+
+      {udbud.length > 0 && (
+        <section className="grid two-col">
+          {udbud.map((u) => (
+            <article className="card udbud-kort" key={u.id}>
+              <div className="space-between">
+                <h3 style={{ margin: 0 }}>{u.titel}</h3>
+                {u.shortliste.length > 0 && (
+                  <StatusChip tone="ok" icon="check">
+                    {u.shortliste.length} på shortliste
+                  </StatusChip>
+                )}
+              </div>
+
+              {u.beskrivelse && <p className="muted small">{u.beskrivelse}</p>}
+
+              <div className="tag-row">
+                {u.cpvKoder.slice(0, 3).map((c) => (
+                  <span className="tag tag--code" key={c.kode}>
+                    {c.kode}
+                  </span>
+                ))}
+                {u.cpvKoder.length > 3 && (
+                  <span className="tag">+{u.cpvKoder.length - 3}</span>
+                )}
+                {u.branchekoder.length > 0 && (
+                  <span className="tag">{u.branchekoder.length} brancher valgt</span>
+                )}
+              </div>
+
+              <div className="button-row">
+                <button className="btn btn-secondary btn-sm" onClick={() => setValgtId(u.id)}>
+                  Åbn markedsanalyse
+                  <Icon name="arrow" size={13} />
+                </button>
+              </div>
+            </article>
+          ))}
         </section>
       )}
     </main>

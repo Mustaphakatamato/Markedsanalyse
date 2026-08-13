@@ -2357,6 +2357,399 @@ select:focus {
 }
 
 /* ==========================================================================
+   Markedsanalyse — CPV-valg, brancheforslag, fordelinger, kandidater
+   ----------------------------------------------------------------------------
+   ÉN farveregel styrer alle bjælkerne her: de viser STØRRELSE, ikke identitet.
+   "Hvor mange virksomheder er i denne branche" er én skala, og en skala har én
+   farve. Gav hver branche sin egen kulør, ville farven foregive at betyde
+   noget, den ikke betyder. Farven er --info-mark, samme som TrendChart bruger
+   til dataserier — bevidst hverken violet (systemet gør noget) eller
+   grøn/gul/rød (datakvalitet). Se farvereglerne i toppen af filen.
+   ========================================================================== */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > label {
+  font-size: 0.78rem;
+  font-weight: 620;
+  color: var(--ink-2);
+}
+
+/* Tastaturmarkering i forslagslisten. Skal være tydelig nok til at kunne
+   følges med øjnene under hurtig pil-navigation, men må ikke ligne et valg
+   der allerede er truffet — derfor flade, ikke ramme. */
+.suggestions-list button.is-marked {
+  background: var(--brand-soft);
+  color: var(--ink);
+}
+
+.suggestions-list button[disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cpv-forslag {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
+}
+
+.cpv-forslag__tekst {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cpv-forslag__sti {
+  font-size: 0.72rem;
+}
+
+/* Valgte CPV-koder. Modsat .chip ombrydes teksten her: en CPV-betegnelse kan
+   være meget lang, og at trunkere den ville skjule præcis det, valget hviler
+   på. */
+.kode-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.kode-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s2);
+  max-width: 100%;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brand-line);
+  background: var(--brand-soft);
+  color: var(--ink);
+  font-size: 0.8rem;
+}
+
+.kode-chip__kode {
+  font-weight: 700;
+  color: var(--brand);
+  flex: none;
+}
+
+.kode-chip__tekst {
+  min-width: 0;
+}
+
+.kode-chip__fjern {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.kode-chip__fjern:hover {
+  background: var(--surface);
+  color: var(--alert-fg);
+}
+
+/* Dækningsgrad for brancheforslaget. Står øverst i panelet, fordi et forslag
+   bygget på 45 af 67 navne vejer anderledes end ét bygget på alle. */
+.daekning {
+  padding: var(--s4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.daekning__bar {
+  margin-top: var(--s3);
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.daekning__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--info-mark);
+}
+
+.branche-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.branche-valg {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.branche-valg:hover {
+  border-color: var(--line-strong);
+}
+
+.branche-valg.is-valgt {
+  border-color: var(--brand-line);
+  background: var(--brand-soft);
+}
+
+.branche-valg input {
+  margin-top: 3px;
+  flex: none;
+  accent-color: var(--brand-solid);
+}
+
+.branche-valg__krop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.branche-valg__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.branche-valg__tekst {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.branche-valg__tal {
+  flex: none;
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+
+.branche-valg__bar {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.branche-valg__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--info-mark);
+}
+
+/* Rangeret fordeling. Tallet står som tekst ved siden af bjælken, så
+   fordelingen kan læses uden farvesyn og overlever print i sort/hvid. */
+.fordeling {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.fordeling__post {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px auto;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.fordeling__etiket {
+  font-size: 0.8rem;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fordeling__spor {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.fordeling__bjaelke {
+  display: block;
+  height: 100%;
+  /* Afrundet dataende, forankret i nullinjen til venstre. */
+  border-radius: 0 999px 999px 0;
+  background: var(--info-mark);
+}
+
+.fordeling__tal {
+  font-size: 0.78rem;
+  color: var(--ink);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.marked-noegletal {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+
+.kandidat-styring {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+
+.kandidat-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kandidat {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+}
+
+.kandidat:hover {
+  background: var(--surface-2);
+}
+
+.kandidat.is-shortlistet {
+  border-color: var(--ok-bd);
+  background: var(--ok-bg);
+}
+
+.kandidat__marker {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.kandidat__marker:hover {
+  border-color: var(--brand-line);
+  color: var(--brand);
+}
+
+.kandidat.is-shortlistet .kandidat__marker {
+  border-color: var(--ok-bd);
+  background: var(--ok-fg);
+  color: var(--surface);
+}
+
+.kandidat__krop {
+  flex: 1;
+  min-width: 0;
+}
+
+.kandidat__top {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
+.kandidat__navn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 640;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.kandidat__navn:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+
+.kandidat__meta,
+.kandidat__tal {
+  margin: 3px 0 0;
+}
+
+.kandidat__cvr {
+  flex: none;
+  align-self: center;
+}
+
+.udbud-kort {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.tag--warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-bd);
+  color: var(--warn-fg);
+}
+
+.tag__tekst {
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.tone-alert {
+  color: var(--alert-fg);
+}
+
+@media (max-width: 640px) {
+  .fordeling__post {
+    grid-template-columns: minmax(0, 1fr) 60px auto;
+  }
+
+  .kandidat__cvr {
+    display: none;
+  }
+}
+
+/* ==========================================================================
    Print — et opslag ender ofte i udbudsmaterialet som bilag
    ----------------------------------------------------------------------------
    Konsollen skal også kunne printes: den nulstilles til hvid flade med sort
@@ -2447,5 +2840,62 @@ select:focus {
   .reveal__body {
     opacity: 1 !important;
     transform: none !important;
+  }
+
+  /* Markedsanalysen ender som bilag i udbudsmaterialet — det er hele
+     grunden til at lys tilstand er standard (se ThemeToggle). Derfor skal
+     bjælkerne overleve papiret. */
+
+  .no-print {
+    display: none !important;
+  }
+
+  /* Sporene bag bjælkerne bliver hvide sammen med --surface-3 og forsvinder.
+     Uden et spor kan man ikke se, hvad en bjælke er en andel AF. */
+  .fordeling__spor,
+  .branche-valg__bar,
+  .daekning__bar {
+    border: 1px solid #999999;
+    background: #ffffff;
+  }
+
+  .fordeling__bjaelke,
+  .branche-valg__bar > span,
+  .daekning__bar > span {
+    background: #555555;
+  }
+
+  /* Shortlisten er analysens konklusion og skal kunne ses på tryk. Markøren
+     er en knap uden tekst og siger intet på papir; rækken markeres i stedet. */
+  .kandidat__marker {
+    display: none !important;
+  }
+
+  .kandidat.is-shortlistet {
+    border: 0;
+    border-left: 3px solid #000000;
+    padding-left: 10px;
+    background: #ffffff;
+  }
+
+  .kandidat.is-shortlistet .kandidat__navn::after {
+    content: " — på shortliste";
+    font-weight: 500;
+    color: #333333;
+  }
+
+  /* En kandidatliste på 200 rækker fylder papiret uden at oplyse. Den
+     printede analyse viser shortlisten; hele listen hører til på skærmen. */
+  .kandidat:not(.is-shortlistet) {
+    display: none;
+  }
+
+  .kandidat-styring {
+    display: none;
+  }
+
+  .kandidat__navn {
+    color: #000000;
+    text-decoration: none;
   }
 }

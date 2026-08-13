@@ -21,9 +21,10 @@ produktion. Selve datakilderne kræver hverken nøgler eller login.
 
 ## Status
 
-Fungerende MVP med tre flows og fem live datakilder. Backend'en består af syv
+Fungerende MVP med tre flows og seks live datakilder. Backend'en består af otte
 Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
-gemmes stadig i browserens `localStorage`.
+gemmes stadig i browserens `localStorage` — de migreres dog frem ved
+skemaændringer, så et udbud ikke går tabt (se `ProjectsContext`).
 
 ## De tre flows
 
@@ -42,10 +43,27 @@ gemmes stadig i browserens `localStorage`.
   **demo-data**, se nedenfor
 
 **Udbud & markedsanalyse** ([`pages/TenderPage.jsx`](src/pages/TenderPage.jsx))
-— opret et udbud (titel, CPV-kode, deadline, anslået værdi) og få:
-- Markedsnøgletal for CPV-koden — **demo-data**
-- Kandidat-leverandører med relevans-score — **demo-data**
-- Seneste rigtige kontrakttildelinger i markedet, hentet fra TED på CPV-koden
+— opret et udbud og afdæk leverandørmarkedet før udbuddet. Alt bygger på
+rigtige kilder:
+- **CPV-koder** søges blandt de 9.454 officielle danske betegnelser. Flere pr.
+  udbud — et IT-driftsudbud rammer sjældent kun én kode
+- **Brancheforslag**: der findes ingen officiel oversættelse fra CPV til
+  branchekode, så den udledes af data — vinderne af nylige danske udbud i
+  CPV-feltet slås op i CVR, og deres faktiske brancher foreslås med andele og
+  dækningsgrad. Forslaget bekræftes eller rettes af ordregiveren, aldrig
+  automatisk
+- **Markedsbillede**: hvor mange virksomheder findes der reelt, hvad laver de,
+  hvor ligger de, og hvilke selskabsformer består markedet af — grundlaget for
+  "opdel eller forklar" (udbudslovens § 49)
+- **Kandidatliste** med shortliste. Nøgletal hentes kun for de shortlistede,
+  da hvert opslag koster to kald mod Erhvervsstyrelsen
+- **Seneste kontrakttildelinger** i CPV-feltet fra TED
+- **Udskriv som bilag** — print-CSS'en viser shortlisten, ikke hele listen
+
+Forskellen på dette og Tilbudsgiver-radaren er populationen: radaren viser dem,
+der har vundet et EU-udbud før, mens markedsanalysen viser hele CVR-registret.
+Bruger man kun det første som leverandørliste, bekræfter man de store og
+skjuler resten — stik imod formålet med en markedsanalyse.
 
 **Tilbudsgiver-radar** ([`pages/TilbudsgiverPage.jsx`](src/pages/TilbudsgiverPage.jsx))
 — det spejlvendte flow: de to ovenstående researcher markedet FOR en
@@ -123,13 +141,18 @@ enkelte servicefil. De vigtigste:
 
 ### Demo-data
 
-Tre ting er hardcodet og markeret som demo-data i UI'et:
+Én ting er stadig hardcodet og markeret som demo-data i UI'et:
 
 | Hvad | Fil |
 |---|---|
 | ESG-rapportering — CSR-rapport, klimarapportering, whistleblowerordning (deterministisk pr. CVR) | [`esgService.js`](src/services/esgService.js) |
-| Kandidat-leverandører — 4 virksomheder med relevans-score | [`data/suppliers.js`](src/data/suppliers.js) |
-| Markedsnøgletal pr. CPV-kode — 4 koder med trend, kontraktstørrelse, modenhed | [`data/cpvOptions.js`](src/data/cpvOptions.js) |
+
+De to øvrige forsvandt med markedsanalysemodulet. `data/suppliers.js` havde
+fire hardkodede leverandører med en relevans-score, der var `8 hvis CPV-koden
+matcher, ellers 3`, og alle fire blev vist uanset hvilket marked man kiggede
+på. `data/cpvOptions.js` havde fire CPV-koder med **opdigtede** betegnelser —
+`64212000` stod som "SMS gateway og beskedtjenester", men hedder officielt
+"Mobiltelefontjeneste". Begge er erstattet af rigtige kilder.
 
 ## Arkitektur
 

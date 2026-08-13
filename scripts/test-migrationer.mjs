@@ -256,6 +256,13 @@ try {
        array['Alfa Software A/S','Beta IT','Gamma Consulting A/S','Ukendt Firma XYZ ApS']) as j`
   )).rows[0].j;
   tjek("4 navne slået op", forslag.navneSlaaetOp === 4);
+  // Dækningsgraden skal tælle NAVNE, ikke virksomheder. Ét navn kan matche
+  // flere selskaber, og en tidligere udgave dividerede virksomheder med navne
+  // — hvilket gav "106 % dækning" på rigtige data.
+  tjek("navneMedTraf ≤ navneSlaaetOp (dækning kan ikke overstige 100 %)",
+    forslag.navneMedTraf <= forslag.navneSlaaetOp,
+    `${forslag.navneMedTraf}/${forslag.navneSlaaetOp}`);
+  tjek("3 af 4 navne ramte", forslag.navneMedTraf === 3, String(forslag.navneMedTraf));
   tjek("3 fundet, det ukendte matcher ikke", forslag.virksomhederFundet === 3,
     JSON.stringify(forslag.virksomhederFundet));
   // TED skriver ofte vinderen uden selskabsform. Uden kernenavn-opslaget faldt
@@ -321,6 +328,29 @@ try {
   tjek("'sms' finder 64212100, ikke 64212000",
     sms.rows.some((r) => r.kode === "64212100"),
     sms.rows.map((r) => `${r.kode} ${r.tekst.slice(0, 24)}`).join(" | "));
+
+  // Fundet ved at køre det rigtige flow: "rengøring" gav rengøringsMIDLER
+  // øverst og selve ydelsen som nummer tre, fordi midlerne har en bredere
+  // kode. Et strammere match skal slå en bredere kode.
+  await db.query(`
+    insert into public.cpv_koder (kode, tekst, niveau, overordnet) values
+      ('39800000','Rengørings-, pudse- og poleringsmidler',2,null),
+      ('90910000','Rengøring',3,null);
+  `);
+  const rengoering = await db.query(`select * from public.soeg_cpv('rengøring')`);
+  tjek("'rengøring' finder ydelsen (90910000) før midlerne (39800000)",
+    rengoering.rows[0]?.kode === "90910000",
+    rengoering.rows.map((r) => `${r.kode} ${r.tekst.slice(0, 22)}`).join(" | "));
+
+  // Reglen den nye sortering ikke må bryde.
+  const byggeIgen = await db.query(`select * from public.soeg_cpv('bygge')`);
+  tjek("'bygge' giver stadig 45000000 øverst", byggeIgen.rows[0]?.kode === "45000000",
+    byggeIgen.rows.map((r) => r.kode).join(", "));
+  const telefonIgen = await db.query(`select * from public.soeg_cpv('telefon')`);
+  tjek("'telefon' giver stadig 64210000 før 64212000",
+    telefonIgen.rows.findIndex((r) => r.kode === "64210000") <
+      telefonIgen.rows.findIndex((r) => r.kode === "64212000"),
+    telefonIgen.rows.map((r) => r.kode).join(", "));
 
   const intet = await db.query(`select * from public.soeg_cpv('   ')`);
   tjek("tom søgetekst giver 0, ikke hele nomenklaturen", intet.rows.length === 0);

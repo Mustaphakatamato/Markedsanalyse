@@ -49,9 +49,14 @@ export async function foreslaaBrancher(vindernavne) {
   // af 67 navne vejer anderledes end ét bygget på alle. Målt på rigtige data
   // ligger den typisk mellem 67 % og 93 % — resten er udenlandske vindere
   // uden dansk CVR-nummer.
+  //
+  // Brøken tæller NAVNE, ikke virksomheder. Ét TED-navn kan matche flere
+  // selskaber med samme normaliserede navn ("A Rengøring" findes flere gange
+  // i CVR), og en tidligere udgave dividerede virksomheder med navne — hvilket
+  // gav "106 % dækning" på et rengøringsudbud.
   return {
     ...svar,
-    daekning: svar.navneSlaaetOp ? svar.virksomhederFundet / svar.navneSlaaetOp : 0
+    daekning: svar.navneSlaaetOp ? svar.navneMedTraf / svar.navneSlaaetOp : 0
   };
 }
 

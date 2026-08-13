@@ -242,6 +242,59 @@ export async function searchByCPV(cpvCode, options = {}) {
 }
 
 /**
+ * Alle navngivne vindere af nylige DANSKE tildelinger under et sæt CPV-koder.
+ *
+ * Bruges til at udlede hvilke branchekoder et CPV-område svarer til: slå
+ * vinderne op i CVR og se hvad de faktisk laver (se markedService.js). Derfor
+ * returneres RÅ NAVNE uden aggregering — modsat getMarketPlayers(), som
+ * rangerer efter antal sejre. Her tæller hver virksomhed én gang, uanset hvor
+ * mange kontrakter den har vundet, så en enkelt storvinder ikke kommer til at
+ * definere hele markedets branchekode.
+ *
+ * Afgrænset til buyer-country=DNK, fordi navnene skal matches mod det danske
+ * CVR-register. Uden den afgrænsning ville feltet fyldes med udenlandske
+ * vindere, der aldrig kan matches, og dækningsgraden ville se kunstigt lav ud.
+ *
+ * Ét kald pr. CPV-kode frem for én sammensat forespørgsel: TED's
+ * expert query language understøtter OR, men adfærden ved OR mellem
+ * classification-cpv-led er ikke verificeret mod API'et, og et forkert
+ * sammensat filter ville fejle stille med for få træf.
+ *
+ * @param {string[]} cpvCodes
+ * @param {{ perKode?: number }} [options]
+ * @returns {Promise<{ navne: string[], antalNotices: number }>}
+ */
+export async function getWinnerNamesByCPV(cpvCodes, options = {}) {
+  const { perKode = 100 } = options;
+  const koder = [...new Set((cpvCodes || []).map((k) => k?.split("-")[0]?.trim()).filter(Boolean))];
+  if (!koder.length) return { navne: [], antalNotices: 0 };
+
+  const svar = await Promise.all(
+    koder.map((code) =>
+      postSearch(
+        `classification-cpv=${code} AND notice-type=can-standard AND buyer-country=DNK` +
+          " SORT BY publication-date DESC",
+        { page: 1, limit: perKode }
+      ).catch(() => ({ notices: [] }))
+    )
+  );
+
+  const navne = new Set();
+  let antalNotices = 0;
+  for (const data of svar) {
+    for (const notice of data.notices || []) {
+      antalNotices++;
+      for (const navn of winnerNamesList(notice["winner-name"])) {
+        const rent = String(navn).trim();
+        if (rent) navne.add(rent);
+      }
+    }
+  }
+
+  return { navne: [...navne], antalNotices };
+}
+
+/**
  * Find de virksomheder der historisk har vundet flest kontrakter inden for en
  * CPV-kode (valgfrit afgrænset til én ordregiver) — bruges til at pege på
  * SANDSYNLIGE KONKURRENTER til et konkret, aktivt udbud.
