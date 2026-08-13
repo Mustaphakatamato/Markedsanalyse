@@ -277,6 +277,54 @@ try {
     `select public.brancheforslag_for_navne(array['Epsilon Nedlagt ApS']) as j`)).rows[0].j;
   tjek("ophørt virksomhed matcher ikke", ophoert.virksomhederFundet === 0);
 
+  // ------------------------------------------------------------------ soeg_cpv
+  console.log("\n=== soeg_cpv() ===");
+
+  // Rigtige koder og officielle betegnelser fra eForms-SDK'et. 64212000 er
+  // med, fordi appen tidligere kaldte den "SMS gateway og beskedtjenester" —
+  // den hedder Mobiltelefontjeneste, og sms er en anden kode.
+  await db.query(`
+    insert into public.cpv_koder (kode, tekst, niveau, overordnet) values
+      ('45000000','Bygge- og anlægsarbejder',1,null),
+      ('72000000','It-tjenester: rådgivning, programmeludvikling, internet og support',1,null),
+      ('64000000','Post- og telekommunikationstjenester',1,null),
+      ('45100000','Forberedelse af byggeplads',2,'45000000'),
+      ('72400000','Internettjenester',2,'72000000'),
+      ('64210000','Telefon- og datatransmissionstjenester',3,'64000000'),
+      ('64212000','Mobiltelefontjeneste',4,'64210000'),
+      ('64212100','Sms-tjenester (Short Message Service)',5,'64212000');
+  `);
+
+  const kodePraefiks = await db.query(`select * from public.soeg_cpv('6421')`);
+  tjek("kodepræfiks-søgning finder 64210000 først",
+    kodePraefiks.rows[0]?.kode === "64210000",
+    kodePraefiks.rows.map((r) => r.kode).join(", "));
+
+  const tekstSoeg = await db.query(`select * from public.soeg_cpv('bygge')`);
+  tjek("tekstsøgning finder 45000000 Bygge- og anlægsarbejder",
+    tekstSoeg.rows.some((r) => r.kode === "45000000"),
+    tekstSoeg.rows.map((r) => r.kode).join(", "));
+
+  // Brede koder skal rangeres over smalle: leder man efter "telefon", er
+  // kategorien mere sandsynlig end den dybeste variant.
+  const bredFoerst = await db.query(`select * from public.soeg_cpv('telefon')`);
+  tjek("brede koder rangeres over smalle",
+    bredFoerst.rows.length > 1 && bredFoerst.rows[0].niveau <= bredFoerst.rows.at(-1).niveau,
+    bredFoerst.rows.map((r) => `${r.kode}:n${r.niveau}`).join(", "));
+
+  const medForaelder = await db.query(`select * from public.soeg_cpv('64212100')`);
+  tjek("overordnet betegnelse følger med",
+    medForaelder.rows[0]?.overordnet_tekst === "Mobiltelefontjeneste",
+    JSON.stringify(medForaelder.rows[0]?.overordnet_tekst));
+
+  const sms = await db.query(`select * from public.soeg_cpv('sms')`);
+  tjek("'sms' finder 64212100, ikke 64212000",
+    sms.rows.some((r) => r.kode === "64212100"),
+    sms.rows.map((r) => `${r.kode} ${r.tekst.slice(0, 24)}`).join(" | "));
+
+  const intet = await db.query(`select * from public.soeg_cpv('   ')`);
+  tjek("tom søgetekst giver 0, ikke hele nomenklaturen", intet.rows.length === 0);
+
   // ---------------------------------------------------------------- regression
   console.log("\n=== Regression: navnesøgningen virker efter skemaændringerne ===");
   const r = await db.query(`select * from public.soeg_virksomhed('alfa')`);

@@ -322,6 +322,26 @@ Normaliseringen ligger i SQL (`navn_normaliser`, `navn_kerne`) og ikke kun i
 `tedService.js`, fordi opslaget skal kunne bruge et udtryksindeks. De to
 implementeringer skal holdes ens — der er en paritetstest for netop det.
 
+### CPV-nomenklaturen
+
+9.454 koder med officielle danske betegnelser i `cpv_koder`, søgbare på både
+kode og tekst gennem `soeg_cpv()`. Indlæses med
+[`scripts/indlaes-cpv.mjs`](scripts/indlaes-cpv.mjs) fra eForms-SDK'ets
+`codelists/cpv.gc` — samme SDK som eForms-skemaerne bag TED-parsingen.
+
+Det er en engangskørsel: CPV 2008 har været uændret siden 2008. Kør den igen,
+hvis EU udgiver en ny udgave.
+
+Betegnelserne skal komme herfra og ikke fra kode. Appen havde tidligere fire
+hardkodede koder med **opdigtede** betegnelser — `64212000` stod som "SMS
+gateway og beskedtjenester", men hedder officielt "Mobiltelefontjeneste"
+(sms-tjenester er `64212100`). En opdigtet betegnelse i udbudsmaterialet ville
+være direkte forkert.
+
+Teksterne fylder 315 KB rå og ligger derfor i databasen frem for i bundlen,
+som i dag er 72 KB gzipped i alt. Søgningen er et debounced fjernopslag,
+samme mønster som firmanavne.
+
 ### Test af migrationer
 
 ```bash
