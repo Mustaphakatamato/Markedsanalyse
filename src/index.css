@@ -2854,6 +2854,80 @@ html {
   gap: var(--s3);
 }
 
+/* ==========================================================================
+   Udbudssøgning
+   ========================================================================== */
+
+/* Filtrene står side om side i grupper med hver sin overskrift frem for i én
+   lang række knapper: der er fire uafhængige valg, og uden grupperingen
+   ligner de ét filter med for mange muligheder. */
+.udbud-filtre {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+}
+
+.udbud-filtre .eyebrow {
+  margin: 0 0 6px;
+}
+
+.udbud-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+/* Resultatet er kort, ikke tabelrækker: en bekendtgørelse har en titel, en
+   beskrivelse og et sæt koder, og det er for meget til en celle. */
+.udbud-liste > .udbud-kort {
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  gap: var(--s2);
+}
+
+.udbud-liste > .udbud-kort:hover {
+  border-color: var(--line-2);
+  background: var(--surface-2);
+}
+
+.udbud-kort__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.udbud-kort__titel {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.35;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.udbud-kort__meta {
+  margin: 0;
+}
+
+.udbud-kort__beskrivelse {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+/* Hoved-CPV'en er ordregiverens egen udpegning af hvad opgaven ER; de
+   supplerende er kontekst. Uden forskellen ser alle koder lige vigtige ud. */
+.tag--hoved {
+  border-color: var(--brand-line);
+  color: var(--brand);
+  font-weight: 650;
+}
+
 .tag--warn {
   background: var(--warn-bg);
   border-color: var(--warn-bd);

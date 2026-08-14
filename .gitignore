@@ -10,3 +10,6 @@ dist
 .cvr-data
 .vercel
 .env*
+
+# Prøver hentet af scripts/test-udbud-parser.mjs --hent
+.udbud-proever/

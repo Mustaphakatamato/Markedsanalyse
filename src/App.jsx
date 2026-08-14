@@ -3,13 +3,14 @@ import Rail from "./components/layout/Rail";
 import CompanyLookupPage from "./pages/CompanyLookupPage";
 import TenderPage from "./pages/TenderPage";
 import TilbudsgiverPage from "./pages/TilbudsgiverPage";
+import UdbudssoegningPage from "./pages/UdbudssoegningPage";
 
 // Hvilket faneblad man stod på er en del af "alt bliver slettet"-oplevelsen
 // ved et refresh — uden dette hopper en refresh altid tilbage til
 // Virksomhedsopslag, selv midt i en Tilbudsgiver-radar-analyse. Samme
 // "markedsanalyse.*"-nøglemønster som ThemeToggle/ProjectsContext.
 const VIEW_STORAGE_KEY = "markedsanalyse.activeView";
-const VALID_VIEWS = ["company", "tenders", "bidder"];
+const VALID_VIEWS = ["company", "tenders", "bidder", "udbudssoegning"];
 
 function readStoredView() {
   try {
@@ -58,6 +59,7 @@ export default function App() {
         )}
         {activeView === "tenders" && <TenderPage onGoToCompany={goToCompany} />}
         {activeView === "bidder" && <TilbudsgiverPage onGoToCompany={goToCompany} />}
+        {activeView === "udbudssoegning" && <UdbudssoegningPage />}
       </div>
     </div>
   );

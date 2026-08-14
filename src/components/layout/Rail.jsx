@@ -3,8 +3,8 @@ import Icon from "../ui/Icon";
 
 // Appens skal er en fast venstreskinne, ikke en topbar. Tre grunde:
 //
-//   1. De tre flows er ikke faneblade i et dokument — de er tre selvstændige
-//      arbejdsgange. En skinne viser dem alle tre hele tiden, også når man er
+//   1. Flowene er ikke faneblade i et dokument — de er selvstændige
+//      arbejdsgange. En skinne viser dem alle hele tiden, også når man er
 //      langt nede i en analyse.
 //   2. Etiketterne er lange ("Udbud & markedsanalyse"). Vandret i en topbar
 //      måtte de forkortes; lodret er der plads til hele navnet.
@@ -18,7 +18,8 @@ import Icon from "../ui/Icon";
 const NAV_ITEMS = [
   { id: "company", label: "Virksomhedsopslag", icon: "building" },
   { id: "tenders", label: "Udbud & markedsanalyse", icon: "doc" },
-  { id: "bidder", label: "Tilbudsgiver-radar", icon: "radar" }
+  { id: "bidder", label: "Tilbudsgiver-radar", icon: "radar" },
+  { id: "udbudssoegning", label: "Udbudssøgning", icon: "search" }
 ];
 
 // Monogram i stedet for et logo vi ikke har: fire datapunkter og en linje —

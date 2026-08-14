@@ -542,6 +542,134 @@ try {
   tjek("tomme og blanke navne springes over", blanktOpslag.rows.length === 0,
     `${blanktOpslag.rows.length} rækker`);
 
+  // ------------------------------------------------------------- soeg_udbud
+  console.log("\n=== cpv_praefiks() og soeg_udbud() ===");
+
+  // Hierarkiet ligger i cifrene. Rammer præfikset forkert, giver et valg på en
+  // overordnet kode ingenting — og siden ser tom ud, som om der ikke findes
+  // udbud i feltet.
+  for (const [kode, forventet] of [
+    ["72000000", "72"],
+    ["72220000", "7222"],
+    ["90910000", "9091"],
+    ["48931000", "48931"],
+    ["72222300", "722223"],
+    ["72222300-0", "722223"]
+  ]) {
+    const r = await db.query("select public.cpv_praefiks($1) as p", [kode]);
+    tjek(`cpv_praefiks('${kode}') = '${forventet}'`, r.rows[0].p === forventet, r.rows[0].p);
+  }
+
+  await db.query(`
+    insert into public.udbud_bekendtgoerelse
+      (notice_id, notice_version, publikationsnummer, kilde, registreringstidspunkt,
+       subtype, art, titel, beskrivelse, kontrakttype, ordregiver, ordregiver_cvr,
+       cpv_hoved, cpv_koder, frist, anslaaet_vaerdi, valuta)
+    values
+      -- Dybt kodet IT-udbud: skal findes både på 72000000 og 72222300.
+      ('u1','01','00111111-2026','TED', now() - interval '10 days','16','udbud',
+       'Drift af kommunens IT-arbejdspladser','Outsourcing af klientdrift og service desk.',
+       'services','Aarhus Kommune','55133018','72222300',
+       array['72222300','72400000'], now() + interval '20 days', 25000000,'DKK'),
+      -- Dansk udbud under tærskelværdien: findes ikke i TED.
+      ('u2','01', null,'DKUDBUD', now() - interval '3 days','DKE3','udbud',
+       'Konsulentbistand til digitalisering','Rådgivning om arkitektur og cloud.',
+       'services','Syddjurs Kommune','29189978','72200000',
+       array['72200000'], now() + interval '5 days', 900000,'DKK'),
+      -- Udløbet frist: må ikke tælle som åben.
+      ('u3','01','00222222-2026','TED', now() - interval '200 days','16','udbud',
+       'Rengøring af rådhuset','Daglig rengøring.','services','Odense Kommune','35209115',
+       '90910000', array['90910000','90911200'], now() - interval '30 days', 4000000,'DKK'),
+      -- Uden frist: hverken åben eller lukket, og må ikke dukke op under "kun åbne".
+      ('u4','01', null,'DKUDBUD', now() - interval '1 day','DKE0','forhaandsmeddelelse',
+       'Kommende udbud af netværksdrift','Markedsdialog forud for udbud.','services',
+       'Klimadatastyrelsen','37284114','72300000', array['72300000'], null, 15000000,'DKK');
+  `);
+
+  const su = async (args = {}) => {
+    const r = await db.query(
+      `select public.soeg_udbud($1,$2,$3,$4,$5,$6,$7,$8) as j`,
+      [
+        args.soegetekst ?? null, args.cpv ?? null, args.kilder ?? null, args.arter ?? null,
+        args.kunAabne ?? false, args.sortering ?? "frist", args.maks ?? 100, args.spring ?? 0
+      ]
+    );
+    return r.rows[0].j;
+  };
+
+  const alleUdbud = await su();
+  tjek("uden filtre findes alle fire", alleUdbud.ialt === 4, JSON.stringify(alleUdbud.ialt));
+
+  // Kernen i CPV-filteret: den brede kode skal finde de dybt kodede udbud.
+  const bred = await su({ cpv: ["72000000"] });
+  tjek("bred CPV-kode (72000000) finder de tre IT-bekendtgørelser",
+    bred.ialt === 3 && !bred.udbud.some((u) => u.noticeId === "u3"),
+    bred.udbud.map((u) => u.noticeId).join(","));
+
+  const smal = await su({ cpv: ["72222300"] });
+  tjek("smal CPV-kode finder kun sit eget udbud", smal.ialt === 1 && smal.udbud[0].noticeId === "u1",
+    smal.udbud.map((u) => u.noticeId).join(","));
+
+  // Rengøringsudbuddet er kodet 90910000; et valg på forældrekoden 90000000
+  // skal ramme det, ligesom hos TED.
+  const foraelder = await su({ cpv: ["90000000"] });
+  tjek("forælderkode 90000000 rammer 90910000", foraelder.ialt === 1 && foraelder.udbud[0].noticeId === "u3",
+    foraelder.udbud.map((u) => u.noticeId).join(","));
+
+  const supplerende = await su({ cpv: ["90911200"] });
+  tjek("supplerende CPV-kode tæller også som et match", supplerende.ialt === 1,
+    supplerende.udbud.map((u) => u.noticeId).join(","));
+
+  const flere = await su({ cpv: ["72000000", "90000000"] });
+  tjek("flere CPV-koder giver foreningsmængden, ikke snittet", flere.ialt === 4);
+
+  const aabne = await su({ kunAabne: true });
+  tjek("kun_aabne udelader både udløbne OG dem uden frist",
+    aabne.ialt === 2 && aabne.udbud.every((u) => ["u1", "u2"].includes(u.noticeId)),
+    aabne.udbud.map((u) => u.noticeId).join(","));
+
+  const dk = await su({ kilder: ["DKUDBUD"] });
+  tjek("kildefilter skiller de danske fra TED", dk.ialt === 2,
+    dk.udbud.map((u) => `${u.noticeId}:${u.kilde}`).join(","));
+
+  const kunUdbud = await su({ arter: ["udbud"] });
+  tjek("artsfilter udelader forhåndsmeddelelsen", kunUdbud.ialt === 3,
+    kunUdbud.udbud.map((u) => u.art).join(","));
+
+  const fritekst = await su({ soegetekst: "cloud" });
+  tjek("fritekst finder ord fra beskrivelsen", fritekst.ialt === 1 && fritekst.udbud[0].noticeId === "u2",
+    fritekst.udbud.map((u) => u.noticeId).join(","));
+
+  const stammet = await su({ soegetekst: "rengøring" });
+  tjek("dansk stemming: 'rengøring' finder 'Rengøring af rådhuset'", stammet.ialt === 1,
+    stammet.udbud.map((u) => u.titel).join(","));
+
+  // Et løst anførselstegn er noget en bruger sagtens taster. plainto_tsquery
+  // ville kaste; websearch_to_tsquery skal bare give et resultat.
+  const skaevTekst = await su({ soegetekst: 'drift"' });
+  tjek("skæv søgetekst med løst anførselstegn kaster ikke", typeof skaevTekst.ialt === "number",
+    JSON.stringify(skaevTekst.ialt));
+
+  const efterFrist = await su({ sortering: "frist", kunAabne: true });
+  tjek("sortering på frist giver den nærmeste først",
+    efterFrist.udbud[0].noticeId === "u2", efterFrist.udbud.map((u) => u.noticeId).join(","));
+
+  const efterVaerdi = await su({ sortering: "vaerdi" });
+  tjek("sortering på værdi giver den største først",
+    efterVaerdi.udbud[0].noticeId === "u1", efterVaerdi.udbud.map((u) => u.noticeId).join(","));
+
+  const side2 = await su({ maks: 2, spring: 2 });
+  tjek("sideinddeling: 'ialt' tæller hele træfmængden, ikke siden",
+    side2.ialt === 4 && side2.udbud.length === 2,
+    `ialt=${side2.ialt} paa_siden=${side2.udbud.length}`);
+
+  tjek("prKilde og prArt opgøres på hele træfmængden",
+    alleUdbud.prKilde.TED === 2 && alleUdbud.prKilde.DKUDBUD === 2 && alleUdbud.prArt.udbud === 3,
+    JSON.stringify([alleUdbud.prKilde, alleUdbud.prArt]));
+
+  const udenTraf = await su({ cpv: ["03000000"] });
+  tjek("CPV uden træf giver 0 og tomt array", udenTraf.ialt === 0 && udenTraf.udbud.length === 0);
+
   // ---------------------------------------------------------------- regression
   console.log("\n=== Regression: navnesøgningen virker efter skemaændringerne ===");
   const r = await db.query(`select * from public.soeg_virksomhed('alfa')`);
