@@ -2682,12 +2682,43 @@ html {
   scroll-margin-top: 60px;
 }
 
+/* Kildeskiftet står over alle andre filtre og adskilt fra dem med en linje:
+   de øvrige filtrerer en liste, dette skifter hvilket spørgsmål listen
+   besvarer. Sidestillet med resten ville forskellen forsvinde. */
+.kilde-vaelger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  padding-bottom: var(--s3);
+  margin-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.kilde-vaelger__forklaring {
+  margin: 0;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
 .kandidat-filter {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s3);
   margin-bottom: var(--s3);
+}
+
+/* Et navn uden CVR-match kan ikke åbnes som profil — det skal ligne tekst,
+   ikke en knap der ikke virker. */
+.kandidat__navn--flad {
+  cursor: default;
+  color: var(--ink);
+}
+
+.kandidat__marker:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 .kandidat-filter__label {
@@ -2991,7 +3022,8 @@ html {
 
   .kandidat-styring,
   .kandidat-filter,
-  .kandidat-mere {
+  .kandidat-mere,
+  .kilde-vaelger {
     display: none;
   }
 

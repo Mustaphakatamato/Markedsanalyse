@@ -21,7 +21,7 @@ produktion. Selve datakilderne kræver hverken nøgler eller login.
 
 ## Status
 
-Fungerende MVP med tre flows og seks live datakilder. Backend'en består af otte
+Fungerende MVP med tre flows og seks live datakilder. Backend'en består af ni
 Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
 gemmes stadig i browserens `localStorage` — de migreres dog frem ved
 skemaændringer, så et udbud ikke går tabt (se `ProjectsContext`).
@@ -55,8 +55,10 @@ rigtige kilder:
 - **Markedsbillede**: hvor mange virksomheder findes der reelt, hvad laver de,
   hvor ligger de, og hvilke selskabsformer består markedet af — grundlaget for
   "opdel eller forklar" (udbudslovens § 49)
-- **Kandidatliste** rangeret efter størrelse, med shortliste. Nøgletal hentes
-  kun for de shortlistede, da hvert opslag koster to kald mod
+- **Kandidatliste** med to kilder, der svarer på hver sit spørgsmål:
+  *Hele markedet* (CVR, rangeret efter størrelse) og *Har vundet før* (TED,
+  rangeret efter vundne kontrakter hos danske ordregivere). Fælles shortliste.
+  Nøgletal hentes kun for de shortlistede, da hvert opslag koster to kald mod
   Erhvervsstyrelsen
 - **Seneste kontrakttildelinger** i CPV-feltet fra TED
 - **Udskriv som bilag** — print-CSS'en viser shortlisten, ikke hele listen
@@ -176,7 +178,7 @@ scripts/
   indlaes-eu-sanktioner.mjs  Ugentlig indlæsning af sanktionslisten
 supabase/
   functions/   cvr-soeg, cvr-datafordeler, ted, ted-notice, regnskab-search,
-               regnskab-doc, sanktionstjek + _shared/
+               regnskab-doc, sanktionstjek, marked, marked-vindere + _shared/
   migrations/  Cache-tabeller, markedsindeks og sanktionsliste
 ```
 
@@ -203,7 +205,7 @@ ovenpå den — og betyder præcis det samme dér som alle andre steder.
 
 ### Backend
 
-Syv Edge Functions står mellem browseren og datakilderne. De findes fordi
+Edge Functions står mellem browseren og datakilderne. De findes fordi
 kilderne ikke kan kaldes direkte: TED sender ingen CORS-headers, cvrapi.dk
 kræver en `User-Agent` browsere ikke må sætte, og Erhvervsstyrelsens data
 findes kun over `http://`. `sanktionstjek` slår i stedet op i vores eget
@@ -216,9 +218,9 @@ de samme fire proxier i `vite.config.js`, hvor de kun fandtes i `dev` og
 `preview` — derfor kunne en bygget app ikke hostes. Genindfør ikke en dev-only
 proxy.
 
-Fire tabeller cacher svarene: CVR-opslag i syv dage, regnskabssøgninger i et
-døgn, regnskabsdokumenter i 30 dage (et offentliggjort regnskab ændrer sig
-ikke), TED-notices i 180 dage (en offentliggjort notice ændrer sig aldrig —
+Cache-tabellerne holder svarene: CVR-opslag i syv dage, regnskabssøgninger i
+et døgn, vinderoptællinger pr. CPV-felt i et døgn, regnskabsdokumenter i 30
+dage (et offentliggjort regnskab ændrer sig ikke), TED-notices i 180 dage (en offentliggjort notice ændrer sig aldrig —
 en rettelse er en ny notice med sit eget nummer). Tabellerne har RLS slået
 til uden policies og er utilgængelige for klienten — kun funktionerne, som
 bruger service-nøglen, kan røre dem.
@@ -281,6 +283,50 @@ ved med.
 
 Afgrænsningen sker i databasen, ikke i browseren. Filtrerer man 200 allerede
 hentede rækker, har man filtreret de forkerte 200.
+
+#### Track record: hvem har rent faktisk vundet
+
+Størrelse svarer på "hvem er stor i denne branche". Den anden kandidatkilde
+svarer på det skarpere spørgsmål: **hvem har løftet den slags opgave for en
+dansk ordregiver?** En branchekode er virksomhedens egen registrering; en
+tildeling er et faktum.
+
+`supabase/functions/marked-vindere` henter TED's kontrakttildelinger på de
+valgte CPV-koder afgrænset til `buyer-country=DNK`, tæller vinderne op og
+kobler navnene til CVR. To ting blev verificeret direkte mod API'et
+(14. august 2026), fordi de ikke fremgår af dokumentationen:
+
+- **`classification-cpv` matcher hierarkisk.** 90910000 giver 921 træf,
+  barnet 90911200 giver 124, og OR mellem dem giver stadig 921. En bred
+  CPV-kode afdækker altså hele sit felt. Wildcard (`9091*`) tilføjer intet.
+- **OR mellem urelaterede koder virker.** 90910000 (rengøring) = 921,
+  79710000 (vagt) = 99, OR = 1012. Derfor ét samlet kald frem for ét pr. kode
+  — det fjerner dobbelttællingen af notices, der bærer flere af koderne.
+
+Sidegrænsen er 250 (`limit=500` svarer HTTP 400), og der hentes op til fire
+sider. For rengøring dækker det alle 926 danske tildelinger tilbage til 2016;
+for bredere felter afkortes der, og `kilde.afkortet` siger det i svaret.
+Optællingen caches et døgn i `ted_vindere_cache` — første kald tager ~8
+sekunder, næste ~0,4.
+
+Rangeringen er antal kontrakter og derefter **antal forskellige ordregivere**.
+Det andet tal er ikke pynt: Atea står med 295 tildelinger i IT-driftsfeltet,
+men hos kun 3 ordregivere — et SKI-rammeaftalemønster, ikke bred
+leverandørkapacitet. Beløb indgår ikke i rangeringen, fordi en rammeaftales
+`total-value` er det fælles loft og ikke må tilskrives én vinder.
+
+Navnematchet mod CVR (`virksomheder_for_navne()`) er bevidst konservativt og
+har tre udfald: entydigt match, flere selskaber med samme navn (intet
+CVR-nummer — vi gætter ikke), eller intet match (typisk en udenlandsk
+leverandør). Målt på rigtige data matcher 24 af 25 i IT-feltet og 10 af 10 i
+rengøring.
+
+**Denne liste kan ikke stå alene.** TED kender kun udbud over EU's
+tærskelværdi, så en leverandør der aldrig har vundet et EU-udbud findes ikke
+her — heller ikke hvis den kan løfte opgaven. Markedets sammensætning, som
+"opdel eller forklar" hviler på, kan slet ikke aflæses af en vinderliste.
+Derfor er CVR-listen standardvalget, og skiftet mellem de to står i UI'et med
+begrundelsen skrevet ud.
 
 **Branchekoderne er DB25 (NACE Rev. 2.1), ikke DB07.** IT-området blev
 omstruktureret ved overgangen: `621000` Computerprogrammering og `622000`

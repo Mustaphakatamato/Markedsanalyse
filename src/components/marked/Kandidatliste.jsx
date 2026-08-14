@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { resolveMany } from "../../services/companyEnrichmentService";
 import { KLASSE_ETIKET } from "../../services/markedService";
+import KildeVaelger from "./KildeVaelger";
 import Icon from "../ui/Icon";
 import SourceBadge from "../ui/SourceBadge";
 import { Working, SkeletonRows } from "../ui/Loading";
@@ -62,6 +63,8 @@ export default function Kandidatliste({
   onSkiftSortering,
   klassefordeling,
   markedIalt,
+  kilde,
+  onSkiftKilde,
   onSkiftShortliste,
   onGoToCompany,
   onPrøvIgen
@@ -109,6 +112,7 @@ export default function Kandidatliste({
           <h3>Kandidater</h3>
           <SourceBadge source="cvr" label="CVR-register" />
         </div>
+        <KildeVaelger kilde={kilde} onSkift={onSkiftKilde} />
         <Working>Finder virksomheder i markedet…</Working>
         <div style={{ marginTop: 14 }}>
           <SkeletonRows rows={6} />
@@ -123,6 +127,7 @@ export default function Kandidatliste({
         <div className="section-header">
           <h3>Kandidater</h3>
         </div>
+        <KildeVaelger kilde={kilde} onSkift={onSkiftKilde} />
         <p className="muted small">{fejl}</p>
         <div className="button-row">
           <button className="btn btn-secondary btn-sm" onClick={onPrøvIgen}>
@@ -175,6 +180,8 @@ export default function Kandidatliste({
         </div>
         <SourceBadge source="cvr" label="CVR-register" />
       </div>
+
+      <KildeVaelger kilde={kilde} onSkift={onSkiftKilde} />
 
       {/* Størrelsesfilteret er det eneste, der udløser et nyt databaseopslag —
           resten filtrerer det hentede. Derfor står det for sig selv. */}

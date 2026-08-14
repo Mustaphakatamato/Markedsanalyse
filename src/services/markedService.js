@@ -25,6 +25,33 @@ async function kald(krop) {
   return svar.json();
 }
 
+// De virksomheder der rent faktisk har vundet kontrakter i CPV-feltet hos
+// danske ordregivere, rangeret efter antal kontrakter og antal forskellige
+// ordregivere. Se supabase/functions/marked-vindere for optællingen.
+//
+// HVORFOR DEN FINDES VED SIDEN AF soegMarked(): en branchekode er
+// virksomhedens egen registrering — en tildeling er et faktum. Til
+// spørgsmålet "hvem kan løfte den her opgave" er track record det stærkeste
+// signal, vi har adgang til.
+//
+// HVORFOR DEN IKKE ERSTATTER soegMarked(): TED kender kun udbud over EU's
+// tærskelværdi. Den leverandør, der aldrig har vundet et EU-udbud, findes
+// ikke her — og markedets sammensætning, som "opdel eller forklar" hviler
+// på, kan ikke aflæses af en vinderliste. De to svarer på hver sit spørgsmål.
+export async function hentVindere(cpvKoder, { top = 25 } = {}) {
+  const koder = [...new Set((cpvKoder ?? []).map((k) => String(k).trim()).filter(Boolean))];
+  if (!koder.length) return { kilde: null, vindere: [] };
+
+  const svar = await postToFunction("/marked-vindere", { cpvKoder: koder, top });
+
+  if (!svar.ok) {
+    const fejl = await svar.json().catch(() => null);
+    throw new Error(fejl?.error || `Vinderopslag fejlede (HTTP ${svar.status})`);
+  }
+
+  return svar.json();
+}
+
 // Hvilke branchekoder peger et sæt TED-vindernavne på?
 //
 // Der findes ingen officiel oversættelse mellem CPV (hvad der købes) og DB25

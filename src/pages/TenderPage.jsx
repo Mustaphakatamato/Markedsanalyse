@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import { useProjects } from "../context/ProjectsContext";
-import { hentMarkedsstatistik, soegMarked, beregnKoncentration } from "../services/markedService";
+import {
+  hentMarkedsstatistik,
+  soegMarked,
+  hentVindere,
+  beregnKoncentration
+} from "../services/markedService";
 import { searchByCPV } from "../services/tedService";
 import CpvVaelger from "../components/marked/CpvVaelger";
 import BrancheVaelger from "../components/marked/BrancheVaelger";
 import Markedsbillede from "../components/marked/Markedsbillede";
 import Kandidatliste from "../components/marked/Kandidatliste";
+import Vinderliste from "../components/marked/Vinderliste";
 import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
 import StatusChip from "../components/ui/StatusChip";
@@ -159,6 +165,19 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
   const [stoerrelsesfilter, setStoerrelsesfilter] = useState("alle");
   const [sortering, setSortering] = useState("stoerrelse");
 
+  // Hvor kandidaterne kommer fra: hele markedet (CVR) eller dem der har
+  // vundet før (TED). Standard er CVR, fordi det er den eneste liste, der
+  // viser markedets sammensætning — og dermed den eneste, der kan bære
+  // "opdel eller forklar". Vinderlisten er skarpere på kapacitet, men blind
+  // for alt under EU's tærskelværdi, og må derfor ikke være det, man ser
+  // uden at have valgt det.
+  const [kilde, setKilde] = useState("cvr");
+
+  const [vindere, setVindere] = useState([]);
+  const [vindereKilde, setVindereKilde] = useState(null);
+  const [vindereStatus, setVindereStatus] = useState("idle");
+  const [vindereFejl, setVindereFejl] = useState(null);
+
   const [redigerer, setRedigerer] = useState(false);
   // Tælles op af "Prøv igen". Uden den ville et gentaget forsøg ikke ændre
   // noget, effekten afhænger af — branchekoderne er de samme — og knappen
@@ -242,6 +261,42 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchenoegle, kommunenoegle, forsoeg, stoerrelsesfilter, sortering]);
+
+  // Vinderoptællingen hentes først når brugeren faktisk vælger kilden. Den
+  // koster op til fire TED-kald bag Edge Function'en, og de fleste
+  // markedsanalyser bliver aldrig skiftet over — så at hente den på forhånd
+  // ville betale prisen hver gang for det, de færreste bruger. Svaret caches
+  // et døgn i Postgres, så skiftet frem og tilbage er gratis bagefter.
+  //
+  // Bemærk at den hænger på CPV-koderne, ikke på branchekoderne: en tildeling
+  // er registreret på hvad der blev KØBT, ikke på hvad vinderen laver til
+  // daglig.
+  useEffect(() => {
+    const koder = udbud.cpvKoder.map((c) => c.kode);
+    if (kilde !== "vindere" || !koder.length) return;
+
+    let annulleret = false;
+    setVindereStatus("henter");
+    setVindereFejl(null);
+
+    hentVindere(koder, { top: 25 })
+      .then((data) => {
+        if (annulleret) return;
+        setVindere(data.vindere ?? []);
+        setVindereKilde(data.kilde ?? null);
+        setVindereStatus("faerdig");
+      })
+      .catch((err) => {
+        if (annulleret) return;
+        setVindereFejl(err.message || "Kunne ikke hente vindere.");
+        setVindereStatus("fejl");
+      });
+
+    return () => {
+      annulleret = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kilde, udbud.cpvKoder.map((c) => c.kode).join(","), forsoeg]);
 
   // Rigtige kontrakttildelinger i CPV-feltet. Beholdt fra den gamle side —
   // det var det eneste panel dér, der byggede på rigtige data.
@@ -329,7 +384,7 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
           skal man scrolle forbi hele leverandørfeltet for at nå det, der står
           under det. Ankrene gør analysen til et dokument, man kan bladre i,
           frem for en rulle. */}
-      {branchekoder.length > 0 && (
+      {(branchekoder.length > 0 || kilde === "vindere") && (
         <nav className="sektion-nav no-print" aria-label="Spring til afsnit i analysen">
           <a href="#brancher">Brancher</a>
           <a href="#markedsbillede">
@@ -340,8 +395,10 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
           </a>
           <a href="#kandidater">
             Kandidater
-            {kandidater.length ? (
-              <span className="sektion-nav__tal">{kandidater.length}</span>
+            {(kilde === "vindere" ? vindere.length : kandidater.length) ? (
+              <span className="sektion-nav__tal">
+                {kilde === "vindere" ? vindere.length : kandidater.length}
+              </span>
             ) : null}
           </a>
           <a href="#tildelinger">
@@ -397,7 +454,7 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
         onAendret={(branchekoder) => opdater({ branchekoder })}
       />
 
-      {!branchekoder.length && (
+      {!branchekoder.length && kilde !== "vindere" && (
         <section className="empty-state">
           <span className="empty-state__icon">
             <Icon name="scales" size={22} />
@@ -408,6 +465,15 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
             ovenfor — ikke på CPV-koden direkte. Der findes ingen officiel oversættelse
             mellem de to, så valget skal være dit.
           </p>
+          {/* Vinderlisten hænger på CPV-koden og har derfor ikke brug for
+              branchevalget. Genvejen står her, fordi kildeskiftet ellers ville
+              være låst inde i en sektion, der ikke vises endnu. */}
+          <div className="button-row" style={{ justifyContent: "center" }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => setKilde("vindere")}>
+              Se hvem der har vundet før i stedet
+              <Icon name="arrow" size={13} />
+            </button>
+          </div>
         </section>
       )}
 
@@ -419,21 +485,38 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
         onPrøvIgen={() => setForsoeg((n) => n + 1)}
       />
 
-      <Kandidatliste
-        virksomheder={kandidater}
-        status={kandidatStatus === "idle" ? null : kandidatStatus}
-        fejl={kandidatFejl}
-        shortliste={udbud.shortliste}
-        stoerrelsesfilter={stoerrelsesfilter}
-        onSkiftStoerrelsesfilter={setStoerrelsesfilter}
-        sortering={sortering}
-        onSkiftSortering={setSortering}
-        klassefordeling={koncentration?.antalPrKlasse}
-        markedIalt={statistik?.ialt}
-        onSkiftShortliste={skiftShortliste}
-        onGoToCompany={onGoToCompany}
-        onPrøvIgen={() => setForsoeg((n) => n + 1)}
-      />
+      {kilde === "vindere" ? (
+        <Vinderliste
+          vindere={vindere}
+          kildeinfo={vindereKilde}
+          status={vindereStatus === "idle" ? "henter" : vindereStatus}
+          fejl={vindereFejl}
+          shortliste={udbud.shortliste}
+          kilde={kilde}
+          onSkiftKilde={setKilde}
+          onSkiftShortliste={skiftShortliste}
+          onGoToCompany={onGoToCompany}
+          onPrøvIgen={() => setForsoeg((n) => n + 1)}
+        />
+      ) : (
+        <Kandidatliste
+          virksomheder={kandidater}
+          status={kandidatStatus === "idle" ? null : kandidatStatus}
+          fejl={kandidatFejl}
+          shortliste={udbud.shortliste}
+          stoerrelsesfilter={stoerrelsesfilter}
+          onSkiftStoerrelsesfilter={setStoerrelsesfilter}
+          sortering={sortering}
+          onSkiftSortering={setSortering}
+          klassefordeling={koncentration?.antalPrKlasse}
+          markedIalt={statistik?.ialt}
+          kilde={kilde}
+          onSkiftKilde={setKilde}
+          onSkiftShortliste={skiftShortliste}
+          onGoToCompany={onGoToCompany}
+          onPrøvIgen={() => setForsoeg((n) => n + 1)}
+        />
+      )}
 
       <section id="tildelinger" className={`card ${tedStatus === "henter" ? "is-working" : ""}`}>
         <div className="section-header">

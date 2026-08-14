@@ -446,6 +446,102 @@ try {
   const intet = await db.query(`select * from public.soeg_cpv('   ')`);
   tjek("tom søgetekst giver 0, ikke hele nomenklaturen", intet.rows.length === 0);
 
+  // ------------------------------------------------- virksomheder_for_navne
+  //
+  // Opslaget der kobler TED-vindernavne til virksomheder i CVR. Hver række
+  // nedenfor findes for at ramme ét bestemt kanttilfælde i matchningen —
+  // rækkefølgen mellem de tre matchniveauer, og hvad der sker når et navn
+  // ikke er entydigt.
+  console.log("\n=== virksomheder_for_navne() ===");
+
+  await db.query(`
+    insert into public.cvr_virksomhed_indeks
+      (cvr, navn, status, ophoert, branchekode, branchetekst,
+       kommunekode, kommunenavn, postnummer, postdistrikt,
+       virksomhedsform, virksomhedsformkode, antal_penheder, startdato)
+    values
+      -- To aktive selskaber med præcis samme navn: her må der IKKE gættes.
+      (10000007,'Omega Service ApS','aktiv',false,'811000','Kombinerede serviceydelser',
+       '101','KØBENHAVN','2300','København S','Anpartsselskab','80',1,'2011-01-01'),
+      (10000008,'Omega Service ApS','aktiv',false,'811000','Kombinerede serviceydelser',
+       '751','AARHUS','8210','Aarhus V','Anpartsselskab','80',1,'2014-01-01'),
+      -- CVR har selskabsformen, TED skriver den ikke.
+      (10000009,'Theta Anlæg A/S','aktiv',false,'421100','Anlæg af veje',
+       '461','ODENSE','5000','Odense C','Aktieselskab','60',4,'1992-01-01'),
+      -- TED skriver selskabsformen, CVR gør ikke.
+      (10000010,'Jota Rengøring','aktiv',false,'812100','Almindelig rengøring',
+       '101','KØBENHAVN','1050','København K','Anpartsselskab','80',1,'2005-01-01'),
+      -- Samme kerne, to selskaber: det eksakte match skal vinde over kernen.
+      (10000011,'Kappa A/S','aktiv',false,'620100','Computerprogrammering',
+       '101','KØBENHAVN','2100','København Ø','Aktieselskab','60',2,'1999-01-01'),
+      (10000012,'Kappa','aktiv',false,'620100','Computerprogrammering',
+       '751','AARHUS','8000','Aarhus C','Enkeltmandsvirksomhed','10',1,'2021-01-01');
+  `);
+
+  const opslag = async (navne) => {
+    const r = await db.query(`select * from public.virksomheder_for_navne($1::text[])`, [navne]);
+    return new Map(r.rows.map((x) => [x.soegt_navn, x]));
+  };
+
+  const m = await opslag([
+    "Alfa Software A/S",
+    "Omega Service ApS",
+    "Theta Anlæg",
+    "Jota Rengøring A/S",
+    "Kappa A/S",
+    "Ukendt Firma XYZ ApS",
+    "Epsilon Nedlagt ApS"
+  ]);
+
+  tjek("hvert søgt navn får præcis én række", m.size === 7, `${m.size} rækker`);
+
+  tjek("eksakt navnematch findes",
+    Number(m.get("Alfa Software A/S")?.cvr) === 10000001 &&
+      m.get("Alfa Software A/S")?.traf_antal === 1);
+
+  // Kernen i den konservative matchning: to selskaber med samme navn giver
+  // et antal, ikke et gæt. Et forkert CVR-nummer ville tilskrive den ene
+  // virksomhed den andens kontrakthistorik.
+  tjek("to selskaber med samme navn giver traf_antal=2 og INTET cvr",
+    m.get("Omega Service ApS")?.traf_antal === 2 && m.get("Omega Service ApS")?.cvr === null,
+    JSON.stringify([m.get("Omega Service ApS")?.traf_antal, m.get("Omega Service ApS")?.cvr]));
+
+  tjek("TED uden selskabsform matcher CVR med ('Theta Anlæg' -> 'Theta Anlæg A/S')",
+    Number(m.get("Theta Anlæg")?.cvr) === 10000009,
+    JSON.stringify(m.get("Theta Anlæg")?.navn));
+
+  tjek("TED med selskabsform matcher CVR uden ('Jota Rengøring A/S' -> 'Jota Rengøring')",
+    Number(m.get("Jota Rengøring A/S")?.cvr) === 10000010,
+    JSON.stringify(m.get("Jota Rengøring A/S")?.navn));
+
+  // Uden niveau-rangeringen ville "Kappa A/S" ramme både "Kappa A/S" og
+  // "Kappa" via kernenavnet, blive flertydigt og dermed miste sit CVR-nummer
+  // — selvom det ene match er eksakt.
+  tjek("eksakt match slår kernenavn-match (Kappa A/S, ikke Kappa)",
+    m.get("Kappa A/S")?.traf_antal === 1 && Number(m.get("Kappa A/S")?.cvr) === 10000011,
+    JSON.stringify([m.get("Kappa A/S")?.traf_antal, m.get("Kappa A/S")?.navn]));
+
+  tjek("ukendt navn giver traf_antal=0 og intet cvr",
+    m.get("Ukendt Firma XYZ ApS")?.traf_antal === 0 &&
+      m.get("Ukendt Firma XYZ ApS")?.cvr === null);
+
+  tjek("ophørt virksomhed matcher ikke",
+    m.get("Epsilon Nedlagt ApS")?.traf_antal === 0);
+
+  tjek("størrelsesklassen følger med",
+    m.get("Theta Anlæg")?.stoerrelsesklasse === "flere_adresser" &&
+      m.get("Alfa Software A/S")?.stoerrelsesklasse === "flere_adresser",
+    JSON.stringify(m.get("Theta Anlæg")?.stoerrelsesklasse));
+
+  const tomtOpslag = await db.query(
+    `select * from public.virksomheder_for_navne(array[]::text[])`);
+  tjek("tom navneliste giver 0 rækker", tomtOpslag.rows.length === 0);
+
+  const blanktOpslag = await db.query(
+    `select * from public.virksomheder_for_navne(array['', '   ', null])`);
+  tjek("tomme og blanke navne springes over", blanktOpslag.rows.length === 0,
+    `${blanktOpslag.rows.length} rækker`);
+
   // ---------------------------------------------------------------- regression
   console.log("\n=== Regression: navnesøgningen virker efter skemaændringerne ===");
   const r = await db.query(`select * from public.soeg_virksomhed('alfa')`);

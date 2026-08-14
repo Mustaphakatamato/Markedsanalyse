@@ -172,6 +172,13 @@ async function* csvObjekter(filsti) {
 
 // ------------------------------------------------------------------ hentning
 
+// Hentningen forsøges igen ved netværksfejl. Det er ikke overforsigtighed:
+// Datafordeleren afbrød Produktionsenhed-filen midt i legemet ("terminated")
+// 14. august, efter at fem andre filer var hentet i samme kørsel. Uden
+// gentagelse koster en enkelt afbrudt forbindelse hele kørslen — de fem
+// foregående filer på tilsammen 550 MB skal hentes forfra.
+const HENT_FORSØG = 4;
+
 async function hentOgUdpak(entitet, apiKey) {
   const zipSti = path.join(ARBEJDSMAPPE, `${entitet}.zip`);
 
@@ -182,14 +189,31 @@ async function hentOgUdpak(entitet, apiKey) {
       `https://api.datafordeler.dk/FileDownloads/GetFile?Register=CVR` +
       `&LatestTotalForEntity=${entitet}&type=current&format=CSV&apiKey=${encodeURIComponent(apiKey)}`;
 
-    const svar = await fetch(url);
-    if (!svar.ok) {
-      // URL'en indeholder API-nøglen og må ikke med i fejlbeskeden.
-      throw new Error(`Kunne ikke hente ${entitet}: HTTP ${svar.status}`);
+    for (let forsøg = 1; ; forsøg++) {
+      try {
+        const svar = await fetch(url);
+        if (!svar.ok) {
+          // URL'en indeholder API-nøglen og må ikke med i fejlbeskeden.
+          // En HTTP-fejl er kildens svar, ikke en afbrudt forbindelse —
+          // den bliver ikke bedre af at blive gentaget.
+          throw Object.assign(
+            new Error(`Kunne ikke hente ${entitet}: HTTP ${svar.status}`),
+            { endeligt: true }
+          );
+        }
+        const data = Buffer.from(await svar.arrayBuffer());
+        await writeFile(zipSti, data);
+        console.log(`${(data.length / 1048576).toFixed(1)} MB`);
+        break;
+      } catch (e) {
+        if (e.endeligt || forsøg >= HENT_FORSØG) throw e;
+        const pause = 5000 * forsøg;
+        process.stdout.write(
+          `\n  forsøg ${forsøg}/${HENT_FORSØG} fejlede (${e.message}), venter ${pause / 1000}s… `
+        );
+        await new Promise((r) => setTimeout(r, pause));
+      }
     }
-    const data = Buffer.from(await svar.arrayBuffer());
-    await writeFile(zipSti, data);
-    console.log(`${(data.length / 1048576).toFixed(1)} MB`);
   } else {
     console.log(`Genbruger hentet ${entitet}.zip`);
   }
