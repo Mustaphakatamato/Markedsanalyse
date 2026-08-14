@@ -134,6 +134,23 @@ try {
   // som efter en rigtig indlæsning, se scripts/indlaes-cvr-indeks.mjs.
   await db.query("refresh materialized view public.marked_dim");
   await db.query("refresh materialized view public.branche_tekst");
+
+  // Opslagstabellerne fyldes af indlæsningsscriptet, ikke af migrationen —
+  // migrationen fylder dem kun én gang, ved opgraderingen. Her efterlignes
+  // det trin, så statistikken kan vise selskabsform og kommunenavn.
+  await db.query(`
+    insert into public.selskabsform_tekst (kode, tekst)
+    select distinct on (virksomhedsformkode) virksomhedsformkode, virksomhedsform
+    from public.cvr_virksomhed_indeks
+    where virksomhedsformkode is not null and virksomhedsform is not null
+    on conflict (kode) do update set tekst = excluded.tekst;
+
+    insert into public.kommune_tekst (kode, navn)
+    select distinct on (kommunekode) kommunekode, kommunenavn
+    from public.cvr_virksomhed_indeks
+    where kommunekode is not null and kommunenavn is not null
+    on conflict (kode) do update set navn = excluded.navn;
+  `);
   // 5 aktive med hovedbranche (Epsilon er ophørt og skal IKKE med) + 3
   // bibrancher (Beta har én, Delta har to). At den ophørte allerede filtreres
   // fra her, er grunden til at ingen af opslagene behøver gøre det igen.

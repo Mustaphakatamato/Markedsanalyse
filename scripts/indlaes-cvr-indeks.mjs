@@ -407,6 +407,42 @@ async function main() {
   }
   console.log(`${medForm.toLocaleString("da-DK")} med selskabsform`);
 
+  // Trin 5b: fjern de selskabsformer, der aldrig er leverandører.
+  //
+  // HVORFOR: indekset findes for at kunne finde og vurdere LEVERANDØRER. En
+  // frivillig forening registreret under en branchekode er ikke en mulig
+  // tilbudsgiver, og at tælle 84.780 af dem med i "markedet" gør billedet
+  // ringere, ikke bedre — andelen af enkeltmandsvirksomheder, som "opdel
+  // eller forklar" hviler på, bliver systematisk fortyndet.
+  //
+  // Det er samtidig 14,3 % af hele indekset, og pladsen er reel: Supabases
+  // 500 MB-loft blev overskredet 14. august, hvilket satte databasen i
+  // read-only.
+  //
+  // OFFENTLIGE MYNDIGHEDER BEHOLDES (230 statslig enhed, 250 primærkommune,
+  // 245 region, 260 er derimod folkekirkelige institutioner). De er
+  // ordregivere, ikke leverandører — men man skal kunne slå "Aarhus Kommune"
+  // op i virksomhedsopslaget, og de fylder tilsammen under 350 rækker.
+  const IKKE_LEVERANDOERER = new Set([
+    "115", // Frivillig forening
+    "110", // Forening
+    "260", // Folkekirkelige Institutioner
+    "152", // Forening med begrænset ansvar
+    "20"   // Dødsbo
+  ]);
+
+  let fravalgt = 0;
+  for (const [cvr, post] of poster) {
+    if (IKKE_LEVERANDOERER.has(post.virksomhedsformkode)) {
+      poster.delete(cvr);
+      fravalgt++;
+    }
+  }
+  console.log(
+    `Udeladt ${fravalgt.toLocaleString("da-DK")} foreninger, dødsboer m.v. ` +
+    `— ${poster.size.toLocaleString("da-DK")} tilbage`
+  );
+
   // Trin 6: produktionsenheder — antallet af aktive forretningssteder.
   //
   // Filen joiner IKKE på CVREnhedsId som de øvrige; den har CVR-nummeret
@@ -466,22 +502,32 @@ async function main() {
     // dem markant i forhold til sidste kørsel, er et kolonnenavn eller et
     // filformat ændret hos kilden — og så ville en rigtig kørsel tømme
     // felterne i stedet for at opdatere dem.
+    // Tælles fra 'poster' EFTER fravalget af foreninger, ikke fra tællerne
+    // undervejs. De blev talt op før filteret og ville give dækningsgrader
+    // over 100 % — en tydelig fejl, men netop den slags der får en til at
+    // affeje et rigtigt fald i dækningen som "den regner nok bare forkert".
+    const raekker = [...poster.values()];
     const pct = (n) => `${((n / poster.size) * 100).toFixed(1)} %`;
+    const tael = (p) => raekker.filter(p).length;
+
+    const medBrancheNu = tael((p) => p.branchekode);
+    const medKommuneNu = tael((p) => p.kommunekode);
+    const medFormNu = tael((p) => p.virksomhedsformkode);
+    const medBi = tael((p) => p.bibrancher?.length);
+    const medPenhed = tael((p) => p.antal_penheder > 0);
+    const medStartdato = tael((p) => p.startdato);
+    const flereStederNu = tael((p) => p.antal_penheder >= 2);
+
     console.log("\nDækning:");
-    console.log(`  hovedbranche   ${medBranche.toLocaleString("da-DK").padStart(9)}  ${pct(medBranche)}`);
-    console.log(`  kommune        ${medAdresse.toLocaleString("da-DK").padStart(9)}  ${pct(medAdresse)}`);
-    console.log(`  selskabsform   ${medForm.toLocaleString("da-DK").padStart(9)}  ${pct(medForm)}`);
-
-    const medBi = [...poster.values()].filter((p) => p.bibrancher?.length).length;
+    console.log(`  hovedbranche   ${medBrancheNu.toLocaleString("da-DK").padStart(9)}  ${pct(medBrancheNu)}`);
+    console.log(`  kommune        ${medKommuneNu.toLocaleString("da-DK").padStart(9)}  ${pct(medKommuneNu)}`);
+    console.log(`  selskabsform   ${medFormNu.toLocaleString("da-DK").padStart(9)}  ${pct(medFormNu)}`);
     console.log(`  bibrancher     ${medBi.toLocaleString("da-DK").padStart(9)}  ${pct(medBi)}`);
-
-    const medPenhed = [...poster.values()].filter((p) => p.antal_penheder > 0).length;
-    const medStartdato = [...poster.values()].filter((p) => p.startdato).length;
     console.log(`  p-enheder      ${medPenhed.toLocaleString("da-DK").padStart(9)}  ${pct(medPenhed)}`);
     console.log(`  startdato      ${medStartdato.toLocaleString("da-DK").padStart(9)}  ${pct(medStartdato)}`);
     // Falder denne til nul, er hele størrelsesrangeringen slået fra uden at
     // noget fejler — listen ville se rigtig ud og vise vilkårlige firmaer.
-    console.log(`  flere steder   ${medFlereSteder.toLocaleString("da-DK").padStart(9)}  ${pct(medFlereSteder)}`);
+    console.log(`  flere steder   ${flereStederNu.toLocaleString("da-DK").padStart(9)}  ${pct(flereStederNu)}`);
 
     const prøve = [...poster.values()].find((p) => p.branchekode && p.kommunekode && p.virksomhedsform);
     console.log(`\nEksempelrække:\n  ${JSON.stringify(prøve)}`);
@@ -509,6 +555,42 @@ async function main() {
   // langt over PostgREST's statement_timeout på 8, så scriptet kan ikke selv
   // udløse det. Uden dette trin svarer markedsopslagene på forrige uges data
   // uden at fejle, hvilket er værre end en fejl.
+  // Opslagstabellerne holdes ved lige her, fordi de er de eneste steder
+  // teksterne findes efter at de gentagne kolonner er ude af marked_dim. Får
+  // CVR en ny selskabsform eller en kommune et nyt navn, og glemmer vi dette
+  // trin, viser markedsstatistikken koden i stedet for teksten (den falder
+  // bevidst tilbage til koden frem for at udelade virksomheden).
+  const opslag = [
+    ["selskabsform_tekst", "kode", "tekst", "virksomhedsformkode", "virksomhedsform"],
+    ["kommune_tekst", "kode", "navn", "kommunekode", "kommunenavn"]
+  ];
+
+  for (const [tabel, kodeKol, tekstKol, kodeFelt, tekstFelt] of opslag) {
+    const par = new Map();
+    for (const post of poster.values()) {
+      if (post[kodeFelt] && post[tekstFelt] && !par.has(post[kodeFelt])) {
+        par.set(post[kodeFelt], post[tekstFelt]);
+      }
+    }
+    const raekker = [...par].map(([k, t]) => ({ [kodeKol]: k, [tekstKol]: t }));
+
+    const svar = await fetch(`${env.VITE_SUPABASE_URL}/rest/v1/${tabel}`, {
+      method: "POST",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify(raekker)
+    });
+    console.log(
+      svar.ok
+        ? `Opdaterede ${tabel} (${raekker.length} værdier).`
+        : `Kunne ikke opdatere ${tabel}: HTTP ${svar.status}`
+    );
+  }
+
   console.log(
     "\nHUSK at genopbygge markedsvisningerne — ellers svarer soeg_marked() og\n" +
     "marked_statistik() stadig på forrige uges data:\n\n" +

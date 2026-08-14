@@ -15,6 +15,13 @@
 //          node scripts/indlaes-udbud-dk.mjs --fuld       (alt forfra)
 //          node scripts/indlaes-udbud-dk.mjs --toerloeb   (læs og tæl, skriv intet)
 //          node scripts/indlaes-udbud-dk.mjs --demo       (mod DEMO-miljøet)
+//          node scripts/indlaes-udbud-dk.mjs --kilde DKUDBUD
+//
+// --kilde afgrænser til én kilde. DKUDBUD er de 1.169 danske bekendtgørelser
+// under EU's tærskelværdi og fylder ~2 MB; ALLE er 23.660 og fylder ~25 MB.
+// Forskellen er værd at kende, når pladsen er knap: TED-delen kan i forvejen
+// søges gennem TED's eget API (se src/services/tedService.js), mens DKUDBUD
+// ikke findes nogen andre steder. Standard er ALLE.
 //
 // Inkrementelt er standard: scriptet spørger databasen om det seneste
 // registreringstidspunkt og henter kun det, der er kommet til siden. Første
@@ -33,6 +40,10 @@ import { pathToFileURL } from "node:url";
 const FULD = process.argv.includes("--fuld");
 const TØRLØB = process.argv.includes("--toerloeb");
 const DEMO = process.argv.includes("--demo");
+
+const KILDER = ["ALLE", "TED", "DKUDBUD"];
+const kildeArg = process.argv[process.argv.indexOf("--kilde") + 1];
+const KILDE = process.argv.includes("--kilde") && KILDER.includes(kildeArg) ? kildeArg : "ALLE";
 
 const SIDESTOERRELSE = 100;
 const BATCH = 200;
@@ -394,7 +405,7 @@ async function hentToken(env) {
 const HENT_FORSØG = 4;
 
 async function hentSide(env, side, siden) {
-  const url = new URL(`${MILJOE.api}/ekstern-data/bekendtgoerelse/v1/fraKilde/ALLE`);
+  const url = new URL(`${MILJOE.api}/ekstern-data/bekendtgoerelse/v1/fraKilde/${KILDE}`);
   url.searchParams.set("page", String(side));
   url.searchParams.set("size", String(SIDESTOERRELSE));
   if (siden) url.searchParams.set("since", siden);
@@ -467,9 +478,14 @@ async function skrivBatch(env, raekker) {
 }
 
 async function senesteRegistrering(env) {
+  // Afgrænset til den kilde vi henter: kører man --kilde DKUDBUD efter en
+  // fuld ALLE-kørsel, ville et fælles vandmærke pege på den nyeste
+  // TED-bekendtgørelse og springe alle ældre danske over.
+  const filter = KILDE === "ALLE" ? "" : `&kilde=eq.${KILDE}`;
   const svar = await restKald(
     env,
-    "udbud_bekendtgoerelse?select=registreringstidspunkt&order=registreringstidspunkt.desc&limit=1"
+    `udbud_bekendtgoerelse?select=registreringstidspunkt${filter}` +
+      "&order=registreringstidspunkt.desc&limit=1"
   );
   if (!svar.ok) return null;
   const raekker = await svar.json();
@@ -490,12 +506,12 @@ async function main() {
       siden = new Date(new Date(seneste).getTime() - VANDMAERKE_OVERLAP_MS)
         .toISOString()
         .slice(0, 19);
-      console.log(`Inkrementelt: henter alt registreret efter ${siden}`);
+      console.log(`Inkrementelt (${KILDE}): henter alt registreret efter ${siden}`);
     } else {
       console.log("Tabellen er tom — henter alt (svarer til --fuld).");
     }
   } else {
-    console.log("Fuld hentning af samtlige bekendtgørelser.");
+    console.log(`Fuld hentning fra kilde ${KILDE}.`);
   }
 
   let side = 1;
@@ -569,7 +585,10 @@ async function main() {
 // main() må derfor kun køre når filen er startet direkte.
 export { parseXml, udtraek, samlFrist, findOrdregiver, afkodEntiteter, rensCvr };
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+// process.argv[1] mangler, når modulet indlæses gennem `node -e` eller en
+// REPL. Uden vagten kaster pathToFileURL(undefined), og en import til
+// afprøvning ville vælte på noget, der intet har med parseren at gøre.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
     console.error("\nFEJL:", err.message);
     process.exit(1);
