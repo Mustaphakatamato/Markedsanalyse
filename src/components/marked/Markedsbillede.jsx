@@ -44,7 +44,7 @@ function tolkSmvAndel(andel) {
 export default function Markedsbillede({ statistik, koncentration, status, fejl, onPrøvIgen }) {
   if (status === "henter") {
     return (
-      <section className="card is-working">
+      <section className="card is-working" id="markedsbillede">
         <div className="section-header">
           <h3>Markedsbillede</h3>
           <SourceBadge source="cvr" label="CVR-register" />
@@ -59,7 +59,7 @@ export default function Markedsbillede({ statistik, koncentration, status, fejl,
 
   if (status === "fejl") {
     return (
-      <section className="card">
+      <section className="card" id="markedsbillede">
         <div className="section-header">
           <h3>Markedsbillede</h3>
         </div>
@@ -77,7 +77,7 @@ export default function Markedsbillede({ statistik, koncentration, status, fejl,
 
   if (!statistik.ialt) {
     return (
-      <section className="card">
+      <section className="card" id="markedsbillede">
         <div className="section-header">
           <h3>Markedsbillede</h3>
           <SourceBadge source="cvr" label="CVR-register" />
@@ -99,7 +99,7 @@ export default function Markedsbillede({ statistik, koncentration, status, fejl,
   const smv = tolkSmvAndel(koncentration?.andelEnkeltmand ?? 0);
 
   return (
-    <section className="card">
+    <section className="card" id="markedsbillede">
       <div className="section-header">
         <div>
           <h3>Markedsbillede</h3>
@@ -146,6 +146,21 @@ export default function Markedsbillede({ statistik, koncentration, status, fejl,
           </p>
           <p className="muted small">af markedet</p>
         </div>
+
+        {/* Det tal ordregiveren leder efter, når spørgsmålet er "hvem kan
+            overhovedet løfte det her". Vises som antal frem for andel: 293 er
+            en liste, man kan arbejde med — 4 % er en fornemmelse. */}
+        <div className="stat">
+          <p className="stat__label">Med flere forretningssteder</p>
+          <p className="stat__value num">
+            {(koncentration?.antalFlereAdresser ?? 0).toLocaleString("da-DK")}
+          </p>
+          <p className="muted small">
+            {koncentration?.antalPrKlasse?.landsdaekkende
+              ? `heraf ${koncentration.antalPrKlasse.landsdaekkende.toLocaleString("da-DK")} med 10 eller flere`
+              : "ud af hele markedet"}
+          </p>
+        </div>
       </div>
 
       {/* Den udbudsstrategiske konsekvens, ikke bare tallet. */}
@@ -157,6 +172,15 @@ export default function Markedsbillede({ statistik, koncentration, status, fejl,
           <p className="verdict__label">Opdel eller forklar (udbudslovens § 49)</p>
           <p className="verdict__value" style={{ fontSize: "0.95rem", lineHeight: 1.5 }}>
             {smv.tekst}
+            {koncentration?.antalOverMikro != null && (
+              <>
+                {" "}
+                {koncentration.antalOverMikro.toLocaleString("da-DK")} af markedets{" "}
+                {koncentration.ialt.toLocaleString("da-DK")} virksomheder er selskaber
+                frem for enkeltmandsvirksomheder — det er dem, kandidatlisten
+                rangerer øverst.
+              </>
+            )}
           </p>
         </div>
       </div>

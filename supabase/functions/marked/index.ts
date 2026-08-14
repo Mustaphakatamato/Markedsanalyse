@@ -8,7 +8,7 @@
 // Tre handlinger, fordi de besvarer hvert sit trin i en markedsafdækning:
 //   brancheforslag  hvilke brancher peger TED-vinderne i dette CPV-felt på?
 //   statistik       hvor stort er markedet, og hvordan ser det ud?
-//   soeg            hvem er de konkret?
+//   soeg            hvem er de konkret — de STØRSTE først, se mindstKlasse.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { handlePreflight, json } from "../_shared/http.ts";
@@ -124,10 +124,28 @@ Deno.serve(async (req) => {
 
   if (handling === "soeg") {
     const maks = Math.min(Math.max(Number(krop.maks) || 200, 1), 2000);
+
+    // Hvid liste frem for gennemstik: værdierne indgår i en case-udtryk i SQL,
+    // hvor alt ukendt falder tilbage til "ingen afgrænsning". En tastefejl fra
+    // klienten ville dermed lydløst give hele markedet i stedet for de store —
+    // et svar der ser rigtigt ud. Her fejler den i stedet.
+    const KLASSER = ["selskab", "flere_adresser", "landsdaekkende"];
+    const mindstKlasse = krop.mindstKlasse == null ? null : String(krop.mindstKlasse);
+    if (mindstKlasse !== null && !KLASSER.includes(mindstKlasse)) {
+      return json(
+        { error: `Ukendt størrelsesklasse '${mindstKlasse}'. Brug ${KLASSER.join(", ")} eller udelad feltet.` },
+        { status: 400 }
+      );
+    }
+
+    const sortering = krop.sortering === "navn" ? "navn" : "stoerrelse";
+
     const { data, error } = await supabase.rpc("soeg_marked", {
       branchekoder,
       kommunekoder: kommunekoder.length ? kommunekoder : null,
-      maks
+      maks,
+      mindst_klasse: mindstKlasse,
+      sortering
     });
     if (error) return json({ error: `Markedssøgning fejlede: ${error.message}` }, { status: 500 });
 
@@ -145,7 +163,10 @@ Deno.serve(async (req) => {
         postnummer: r.postnummer,
         postdistrikt: r.postdistrikt,
         virksomhedsform: r.virksomhedsform,
-        trafHovedbranche: r.traf_hovedbranche
+        trafHovedbranche: r.traf_hovedbranche,
+        antalPenheder: r.antal_penheder,
+        startdato: r.startdato,
+        stoerrelsesklasse: r.stoerrelsesklasse
       }))
     });
   }

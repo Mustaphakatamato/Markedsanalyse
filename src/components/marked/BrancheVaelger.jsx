@@ -91,7 +91,7 @@ export default function BrancheVaelger({ cpvKoder, valgte, onAendret }) {
   const daekningPct = forslag?.daekning != null ? Math.round(forslag.daekning * 100) : null;
 
   return (
-    <section className={`card ${status === "henter" ? "is-working" : ""}`}>
+    <section id="brancher" className={`card ${status === "henter" ? "is-working" : ""}`}>
       <div className="section-header">
         <div>
           <h3>Hvilke brancher er markedet?</h3>

@@ -55,8 +55,9 @@ rigtige kilder:
 - **Markedsbillede**: hvor mange virksomheder findes der reelt, hvad laver de,
   hvor ligger de, og hvilke selskabsformer består markedet af — grundlaget for
   "opdel eller forklar" (udbudslovens § 49)
-- **Kandidatliste** med shortliste. Nøgletal hentes kun for de shortlistede,
-  da hvert opslag koster to kald mod Erhvervsstyrelsen
+- **Kandidatliste** rangeret efter størrelse, med shortliste. Nøgletal hentes
+  kun for de shortlistede, da hvert opslag koster to kald mod
+  Erhvervsstyrelsen
 - **Seneste kontrakttildelinger** i CPV-feltet fra TED
 - **Udskriv som bilag** — print-CSS'en viser shortlisten, ikke hele listen
 
@@ -239,10 +240,47 @@ og tillader kun ét rodfelt pr. forespørgsel:
    der har vundet et EU-udbud før, hvilket systematisk skjuler mindre og
    nye leverandører.
 
-Indekset holder navn, hovedbranche, bibrancher, kommune, postnummer og
-selskabsform. Dækningen er 100 % på alle felter undtagen bibrancher, som kun
-10,7 % af virksomhederne har. Detaljer (ansatte, adresse, kreditstatus)
-hentes stadig pr. CVR-nummer, hvor der ingen begrænsning er.
+Indekset holder navn, hovedbranche, bibrancher, kommune, postnummer,
+selskabsform, antal aktive produktionsenheder og stiftelsesdato. Dækningen er
+100 % på alle felter undtagen bibrancher, som kun 10,7 % af virksomhederne
+har. Detaljer (ansatte, adresse, kreditstatus) hentes stadig pr. CVR-nummer,
+hvor der ingen begrænsning er.
+
+#### Størrelse: hvorfor forretningssteder og ikke omsætning
+
+Kandidatlisten rangerer efter størrelse, fordi et vilkårligt udsnit af et
+marked er ubrugeligt: i rengøringsbranchen (`812100`) er 7.388 virksomheder
+aktive, 64 % af dem er enkeltmandsvirksomheder eller PMV'er, og kun 293 —
+**4,0 %** — er A/S eller har mere end ét forretningssted. Et udsnit på 200
+vilkårlige rækker rummer ca. otte af dem.
+
+Målet kunne ikke bygges på omsætning eller ansatte, for de tal findes ikke i
+bulk:
+
+- Datafordelerens `Beskaeftigelse`-entitet svarer **404** (kendt entitet, ingen
+  aktuel fil). Varianter som `AarsBeskaeftigelse` svarer 403.
+- Erhvervsstyrelsens regnskabs-API (`distribution.virk.dk/offentliggoerelser`)
+  udstiller kun dokument-URL'er — nøgletallene ligger inde i XBRL-filerne og
+  skal parses ét regnskab ad gangen.
+- CVR's eget Elasticsearch-udtræk (`distribution.virk.dk/cvr-permanent`), som
+  har `nyesteAarsbeskaeftigelse.antalAnsatte` for hele populationen, svarer
+  **401** — det kræver adgangskode udstedt af Erhvervsstyrelsen. Får appen
+  den, er det den rigtige kilde til et ægte størrelsesmål.
+
+Tilbage står to felter, der findes for alle: **antal aktive
+produktionsenheder** og **selskabsform**. Fordelingen gør dem brugbare —
+844.679 af 870.461 virksomheder har præcis ét forretningssted, 977 har ti
+eller flere. `stoerrelse_score()` vægter dem, `stoerrelsesklasse()` oversætter
+til fire trin (`mikro`, `selskab`, `flere_adresser`, `landsdaekkende`).
+
+**Det måler udstrækning, ikke omsætning.** Et rådgivningshus med 300 ansatte
+på én adresse havner i `selskab` side om side med et enmands-ApS. Rangeringen
+er en forsortering, der gør listen brugbar; de rigtige tal kommer fra
+regnskabsberigelsen på shortlisten. UI'et siger det, og det skal det blive
+ved med.
+
+Afgrænsningen sker i databasen, ikke i browseren. Filtrerer man 200 allerede
+hentede rækker, har man filtreret de forkerte 200.
 
 **Branchekoderne er DB25 (NACE Rev. 2.1), ikke DB07.** IT-området blev
 omstruktureret ved overgangen: `621000` Computerprogrammering og `622000`
@@ -258,10 +296,12 @@ node scripts/indlaes-cvr-indeks.mjs --toerloeb  # læs og tæl, skriv intet
 ```
 
 Scriptet kræver `DATAFORDELER_API_KEY` og `SUPABASE_SERVICE_ROLE_KEY` i `.env`.
-Det henter fem bulkfiler — Virksomhed, Navn, Branche, Adressering og
-Virksomhedsform — der alle joiner på `CVREnhedsId`. Kør altid uden `--behold`,
-så alle fem stammer fra samme ugentlige snapshot; blandes to snapshots, får
-nogle virksomheder branche uden navn.
+Det henter seks bulkfiler — Virksomhed, Navn, Branche, Adressering,
+Virksomhedsform og Produktionsenhed. De fem første joiner på `CVREnhedsId`;
+Produktionsenhed har CVR-nummeret direkte i
+`tilknyttetVirksomhedsCVRNummer`. Kør altid uden `--behold`, så alle seks
+stammer fra samme ugentlige snapshot; blandes to snapshots, får nogle
+virksomheder branche uden navn.
 
 Kør `--toerloeb` efter ændringer i parsingen. Den rapporterer dækningsgrad pr.
 felt uden at skrive, og falder én af dem markant, har kilden ændret et

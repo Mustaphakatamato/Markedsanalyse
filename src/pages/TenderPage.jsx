@@ -150,6 +150,15 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
   const [tedNotices, setTedNotices] = useState([]);
   const [tedStatus, setTedStatus] = useState("idle");
 
+  // Størrelsesafgrænsningen ligger her og ikke i Kandidatlisten, fordi den
+  // udløser et nyt databaseopslag: de store udgør nogle få procent af et
+  // marked, så et filter anvendt på 200 allerede hentede rækker ville filtrere
+  // de forkerte 200. Standard er "alle" — listen er rangeret efter størrelse,
+  // så de store ligger øverst uden at markedets små skjules. Netop deres antal
+  // er grundlaget for "opdel eller forklar".
+  const [stoerrelsesfilter, setStoerrelsesfilter] = useState("alle");
+  const [sortering, setSortering] = useState("stoerrelse");
+
   const [redigerer, setRedigerer] = useState(false);
   // Tælles op af "Prøv igen". Uden den ville et gentaget forsøg ikke ændre
   // noget, effekten afhænger af — branchekoderne er de samme — og knappen
@@ -160,21 +169,23 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
   const branchenoegle = branchekoder.join(",");
   const kommunenoegle = udbud.kommunekoder.join(",");
 
-  // Markedsbillede og kandidater hentes samlet, når branchekoderne ændrer sig.
+  // Markedsbilledet afhænger kun af branchekoderne og geografien — ikke af
+  // størrelsesfilteret. Det er hele pointen: fordelingen skal blive stående
+  // som markedets sande sammensætning, mens man skruer på kandidatlisten.
+  // Ellers ville "kun store" få markedet til at se ud som om det bestod af
+  // store virksomheder.
+  //
   // cancelled-flaget beskytter mod at et langsomt svar fra et tidligere sæt
   // koder overskriver et nyere — brugeren retter ofte koderne flere gange.
   useEffect(() => {
     if (!branchekoder.length) {
       setStatistik(null);
-      setKandidater([]);
       setStatistikStatus("idle");
-      setKandidatStatus("idle");
       return;
     }
 
     let annulleret = false;
     setStatistikStatus("henter");
-    setKandidatStatus("henter");
 
     hentMarkedsstatistik(branchekoder, { kommunekoder: udbud.kommunekoder })
       .then((data) => {
@@ -188,7 +199,33 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
         setStatistikStatus("fejl");
       });
 
-    soegMarked(branchekoder, { kommunekoder: udbud.kommunekoder, maks: 200 })
+    return () => {
+      annulleret = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchenoegle, kommunenoegle, forsoeg]);
+
+  // Kandidaterne hentes forfra, når størrelsesafgrænsningen ændrer sig.
+  // Alternativet — at filtrere de hentede 200 — ser billigere ud, men er
+  // forkert: de store udgør få procent af et marked, så de 200 vilkårlige
+  // rækker rummer dem næsten ikke. Afgrænsningen skal ske dér, hvor hele
+  // markedet er, altså i databasen.
+  useEffect(() => {
+    if (!branchekoder.length) {
+      setKandidater([]);
+      setKandidatStatus("idle");
+      return;
+    }
+
+    let annulleret = false;
+    setKandidatStatus("henter");
+
+    soegMarked(branchekoder, {
+      kommunekoder: udbud.kommunekoder,
+      maks: 200,
+      mindstKlasse: stoerrelsesfilter === "alle" ? null : stoerrelsesfilter,
+      sortering
+    })
       .then((data) => {
         if (annulleret) return;
         setKandidater(data);
@@ -204,7 +241,7 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
       annulleret = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchenoegle, kommunenoegle, forsoeg]);
+  }, [branchenoegle, kommunenoegle, forsoeg, stoerrelsesfilter, sortering]);
 
   // Rigtige kontrakttildelinger i CPV-feltet. Beholdt fra den gamle side —
   // det var det eneste panel dér, der byggede på rigtige data.
@@ -288,6 +325,34 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
         </div>
       </section>
 
+      {/* Kandidatlisten er lang af natur — den er et marked. Uden en genvej
+          skal man scrolle forbi hele leverandørfeltet for at nå det, der står
+          under det. Ankrene gør analysen til et dokument, man kan bladre i,
+          frem for en rulle. */}
+      {branchekoder.length > 0 && (
+        <nav className="sektion-nav no-print" aria-label="Spring til afsnit i analysen">
+          <a href="#brancher">Brancher</a>
+          <a href="#markedsbillede">
+            Markedsbillede
+            {statistik?.ialt ? (
+              <span className="sektion-nav__tal">{statistik.ialt.toLocaleString("da-DK")}</span>
+            ) : null}
+          </a>
+          <a href="#kandidater">
+            Kandidater
+            {kandidater.length ? (
+              <span className="sektion-nav__tal">{kandidater.length}</span>
+            ) : null}
+          </a>
+          <a href="#tildelinger">
+            Tildelinger
+            {tedNotices.length ? (
+              <span className="sektion-nav__tal">{tedNotices.length}</span>
+            ) : null}
+          </a>
+        </nav>
+      )}
+
       {redigerer && (
         <section className="card no-print">
           <div className="section-header">
@@ -359,12 +424,18 @@ function Analyse({ udbud, opdater, skiftShortliste, onGoToCompany, onTilbage, on
         status={kandidatStatus === "idle" ? null : kandidatStatus}
         fejl={kandidatFejl}
         shortliste={udbud.shortliste}
+        stoerrelsesfilter={stoerrelsesfilter}
+        onSkiftStoerrelsesfilter={setStoerrelsesfilter}
+        sortering={sortering}
+        onSkiftSortering={setSortering}
+        klassefordeling={koncentration?.antalPrKlasse}
+        markedIalt={statistik?.ialt}
         onSkiftShortliste={skiftShortliste}
         onGoToCompany={onGoToCompany}
         onPrøvIgen={() => setForsoeg((n) => n + 1)}
       />
 
-      <section className={`card ${tedStatus === "henter" ? "is-working" : ""}`}>
+      <section id="tildelinger" className={`card ${tedStatus === "henter" ? "is-working" : ""}`}>
         <div className="section-header">
           <div>
             <h3>Seneste kontrakttildelinger i markedet</h3>

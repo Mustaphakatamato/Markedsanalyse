@@ -2329,7 +2329,17 @@ select:focus {
    Reduceret bevægelse — alt der blinker, glider eller lander slukkes
    ========================================================================== */
 
+/* Springet til et afsnit skal glide, ikke hoppe: uden det mister man
+   fornemmelsen af hvor i analysen man landede. Slukkes nedenfor. */
+html {
+  scroll-behavior: smooth;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
@@ -2617,12 +2627,101 @@ select:focus {
   margin-bottom: var(--s4);
 }
 
+/* Sektionsnavigation i markedsanalysen.
+   Klæber, fordi den skal kunne bruges NEDE i kandidatlisten — det er dér, man
+   opdager, at man er kommet for langt. Var den kun i toppen, skulle man
+   scrolle tilbage gennem markedet for at komme videre. */
+.sektion-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px;
+  margin-bottom: var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+
+.sektion-nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.sektion-nav a:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.sektion-nav__tal {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+/* Uden dette lander overskriften bag den klæbende navigation, når man
+   springer til et afsnit. */
+#brancher,
+#markedsbillede,
+#kandidater,
+#tildelinger {
+  scroll-margin-top: 60px;
+}
+
+.kandidat-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.kandidat-filter__label {
+  margin: 0;
+}
+
+/* Antallet i markedet står med tyndere vægt end etiketten: det er en
+   oplysning om knappen, ikke en del af dens navn. */
+.nav-button__tal {
+  font-weight: 500;
+  opacity: 0.65;
+}
+
 .kandidat-styring {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s3);
   margin-bottom: var(--s4);
+}
+
+.field--inline {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.kandidat-mere {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
 }
 
 .kandidat-liste {
@@ -2890,7 +2989,9 @@ select:focus {
     display: none;
   }
 
-  .kandidat-styring {
+  .kandidat-styring,
+  .kandidat-filter,
+  .kandidat-mere {
     display: none;
   }
 

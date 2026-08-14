@@ -100,24 +100,34 @@ try {
   // kanttilfælde, ikke for at fylde: Delta Revision har IT som BIbranche
   // (skal findes, men rangeres under), Epsilon er ophørt (må aldrig dukke op),
   // og Zeta er enkeltmandsvirksomhed (SMV-signalet i markedsstatistikken).
+  //
+  // Størrelsesfelterne er valgt så de fire klasser alle er repræsenteret, og
+  // så rangeringen kan skelnes fra den gamle: Delta (ét sted, P/S) skal ligge
+  // OVER Beta (ét sted, ApS), selvom Delta kun er et bibranche-match.
+  //   Alfa   3 P-enheder, A/S (60)  → score 35, flere_adresser
+  //   Beta   1 P-enhed,   ApS (80)  → score 13, selskab
+  //   Gamma 12 P-enheder, A/S (60)  → score 125, landsdaekkende
+  //   Delta  1 P-enhed,   P/S (70)  → score 15, selskab
+  //   Zeta   1 P-enhed,   enk. (10) → score 10, mikro
   console.log("\n=== Testdata ===");
   await db.query(`
     insert into public.cvr_virksomhed_indeks
       (cvr, navn, status, ophoert, branchekode, branchetekst, bibrancher,
-       kommunekode, kommunenavn, postnummer, postdistrikt, virksomhedsform)
+       kommunekode, kommunenavn, postnummer, postdistrikt, virksomhedsform,
+       virksomhedsformkode, antal_penheder, startdato)
     values
       (10000001,'Alfa Software A/S','aktiv',false,'620100','Computerprogrammering',null,
-       '101','KØBENHAVN','2100','København Ø','Aktieselskab'),
+       '101','KØBENHAVN','2100','København Ø','Aktieselskab','60',3,'1998-04-01'),
       (10000002,'Beta IT ApS','aktiv',false,'620100','Computerprogrammering',array['620200'],
-       '751','AARHUS','8000','Aarhus C','Anpartsselskab'),
+       '751','AARHUS','8000','Aarhus C','Anpartsselskab','80',1,'2015-09-15'),
       (10000003,'Gamma Consulting A/S','aktiv',false,'620200','IT-konsulentvirksomhed',null,
-       '101','KØBENHAVN','1050','København K','Aktieselskab'),
+       '101','KØBENHAVN','1050','København K','Aktieselskab','60',12,'1985-01-02'),
       (10000004,'Delta Revision P/S','aktiv',false,'692000','Bogføring og revision',array['620100','631100'],
-       '461','ODENSE','5000','Odense C','Partnerselskab'),
+       '461','ODENSE','5000','Odense C','Partnerselskab','70',1,'2001-06-01'),
       (10000005,'Epsilon Nedlagt ApS','ophoert',true,'620100','Computerprogrammering',null,
-       '101','KØBENHAVN','2200','København N','Anpartsselskab'),
+       '101','KØBENHAVN','2200','København N','Anpartsselskab','80',1,'2010-01-01'),
       (10000006,'Zeta Enkeltmand','aktiv',false,'620100','Computerprogrammering',null,
-       '751','AARHUS','8200','Aarhus N','Enkeltmandsvirksomhed');
+       '751','AARHUS','8200','Aarhus N','Enkeltmandsvirksomhed','10',1,'2020-03-01');
   `);
 
   // De materialiserede views blev bygget mens tabellen var tom. Samme trin
@@ -144,9 +154,17 @@ try {
   const delta = b.rows.find((r) => Number(r.cvr) === 10000004);
   tjek("bibranche-match findes (Delta Revision)", !!delta);
   tjek("bibranche-match markeres traf_hovedbranche = false", delta?.traf_hovedbranche === false);
-  tjek("hovedbranche rangeres før bibranche",
-    b.rows[0]?.traf_hovedbranche === true && b.rows.at(-1)?.traf_hovedbranche === false,
-    b.rows.map((r) => `${r.navn}:${r.traf_hovedbranche}`).join(" | "));
+
+  // BEVIDST ÆNDRING (20260814090100): hovedbranche var før den primære
+  // rangeringsnøgle. Nu er størrelsen det, og hovedbranche er tiebreak inden
+  // for samme score. Grunden er at et vilkårligt udsnit af et rigtigt marked
+  // består af enmandsfirmaer — evidensstyrken for at de laver det rigtige er
+  // høj, men de kan ikke løfte opgaven. Bibranche-filteret i UI'et er stadig
+  // vejen til den strenge liste.
+  tjek("størrelse rangerer over hovedbranche (Delta P/S før Beta ApS)",
+    b.rows.findIndex((r) => Number(r.cvr) === 10000004) <
+      b.rows.findIndex((r) => Number(r.cvr) === 10000002),
+    b.rows.map((r) => `${r.navn}:${r.stoerrelsesklasse}`).join(" | "));
 
   const c = await db.query(`select * from public.soeg_marked(array['620100'], array['751'])`);
   tjek("geografisk filter (kommune 751 Aarhus) giver 2", c.rows.length === 2,
@@ -165,6 +183,69 @@ try {
 
   const h = await db.query(`select * from public.soeg_marked(array['620100'], null, 2)`);
   tjek("maks respekteres", h.rows.length === 2);
+
+  // ------------------------------------------------------- rangering og filter
+  //
+  // Kernen i hele ændringen: 'maks' må ikke længere betyde "de 200 første i
+  // vilkårlig rækkefølge". Rammer afgrænsningen først og sorteringen bagefter,
+  // er filteret i praksis virkningsløst i et rigtigt marked — de store udgør
+  // 4 % af populationen og ville falde uden for udsnittet.
+  console.log("\n=== soeg_marked(): rangering og størrelsesfilter ===");
+
+  const rang = await db.query(`select * from public.soeg_marked(array['620100'])`);
+  tjek("de største først (Alfa 3 P-enheder, Delta P/S, Beta ApS, Zeta enkeltmand)",
+    rang.rows.map((r) => Number(r.cvr)).join(",") === "10000001,10000004,10000002,10000006",
+    rang.rows.map((r) => `${r.navn}:${r.stoerrelsesklasse}`).join(" | "));
+
+  tjek("klasserne udledes rigtigt",
+    rang.rows[0].stoerrelsesklasse === "flere_adresser" &&
+      rang.rows[1].stoerrelsesklasse === "selskab" &&
+      rang.rows.at(-1).stoerrelsesklasse === "mikro",
+    rang.rows.map((r) => `${r.navn}:${r.stoerrelsesklasse}`).join(" | "));
+
+  tjek("antal_penheder og startdato følger med",
+    rang.rows[0].antal_penheder === 3 &&
+      rang.rows[0].startdato instanceof Date,
+    `${rang.rows[0].antal_penheder} / ${rang.rows[0].startdato}`);
+
+  const gamma = await db.query(`select * from public.soeg_marked(array['620200'])`);
+  tjek("12 P-enheder giver klassen 'landsdaekkende'",
+    gamma.rows.find((r) => Number(r.cvr) === 10000003)?.stoerrelsesklasse === "landsdaekkende",
+    gamma.rows.map((r) => `${r.navn}:${r.stoerrelsesklasse}`).join(" | "));
+
+  const kunSelskaber = await db.query(
+    `select * from public.soeg_marked(array['620100'], null, 200, 'selskab')`);
+  tjek("mindst_klasse='selskab' fjerner enkeltmandsvirksomheden",
+    kunSelskaber.rows.length === 3 &&
+      !kunSelskaber.rows.some((r) => Number(r.cvr) === 10000006),
+    kunSelskaber.rows.map((r) => r.navn).join(", "));
+
+  const kunFlere = await db.query(
+    `select * from public.soeg_marked(array['620100'], null, 200, 'flere_adresser')`);
+  tjek("mindst_klasse='flere_adresser' giver kun Alfa",
+    kunFlere.rows.length === 1 && Number(kunFlere.rows[0].cvr) === 10000001,
+    kunFlere.rows.map((r) => r.navn).join(", "));
+
+  // Filteret skal ramme FØR afgrænsningen, ellers er det bare en sortering.
+  // maks=1 på et filter der har tre kandidater skal give den største af de
+  // tre — ikke den største af hele markedet, hvis den er filtreret fra.
+  const filterFoerGraense = await db.query(
+    `select * from public.soeg_marked(array['620100'], null, 1, 'selskab')`);
+  tjek("filteret afgrænser i databasen, ikke bagefter",
+    filterFoerGraense.rows.length === 1 && Number(filterFoerGraense.rows[0].cvr) === 10000001,
+    filterFoerGraense.rows.map((r) => r.navn).join(", "));
+
+  const efterNavn = await db.query(
+    `select * from public.soeg_marked(array['620100'], null, 200, null, 'navn')`);
+  tjek("sortering='navn' giver alfabetisk rækkefølge",
+    efterNavn.rows.map((r) => r.navn).join(",") ===
+      "Alfa Software A/S,Beta IT ApS,Delta Revision P/S,Zeta Enkeltmand",
+    efterNavn.rows.map((r) => r.navn).join(", "));
+
+  const ukendtKlasse = await db.query(
+    `select * from public.soeg_marked(array['620100'], null, 200, 'vrøvl')`);
+  tjek("ukendt klasse betyder 'ingen afgrænsning', ikke 'intet marked'",
+    ukendtKlasse.rows.length === 4, `${ukendtKlasse.rows.length} rækker`);
 
   // --------------------------------------------------------- marked_statistik
   console.log("\n=== marked_statistik() ===");
@@ -193,6 +274,16 @@ try {
   tjek("prSelskabsform skiller enkeltmand fra A/S",
     s.prSelskabsform.some((x) => x.form === "Enkeltmandsvirksomhed"),
     JSON.stringify(s.prSelskabsform.map((x) => `${x.form}:${x.antal}`)));
+
+  // Størrelsesfordelingen er grundlaget for "opdel eller forklar": den siger
+  // hvor stor en del af markedet der overhovedet kan byde på en samlet opgave.
+  tjek("prStoerrelse fordeler markedet på de fire klasser",
+    s.prStoerrelse?.flere_adresser === 1 && s.prStoerrelse?.selskab === 2 &&
+      s.prStoerrelse?.mikro === 1,
+    JSON.stringify(s.prStoerrelse));
+  tjek("prStoerrelse summer til ialt (ingen virksomhed i to klasser)",
+    Object.values(s.prStoerrelse ?? {}).reduce((n, x) => n + x, 0) === s.ialt,
+    JSON.stringify(s.prStoerrelse));
 
   const ukendt = (await db.query(`select public.marked_statistik(array['999999']) as j`)).rows[0].j;
   tjek("ukendt branche giver 0 og tomme arrays",

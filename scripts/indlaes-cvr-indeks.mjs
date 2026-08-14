@@ -1,5 +1,6 @@
 // Indlæser markedsindekset over aktive danske virksomheder fra Datafordelerens
-// CVR-fildownload til Postgres: navn, branche, geografi og selskabsform.
+// CVR-fildownload til Postgres: navn, branche, geografi, selskabsform,
+// antal forretningssteder og stiftelsesdato.
 //
 // HVORFOR: Datafordelerens GraphQL-tjeneste kan kun filtrere strenge med "eq"
 // og "in" — der findes ingen "contains". Den tillader desuden kun ét rodfelt
@@ -33,6 +34,14 @@
 // navne svarer 403). Antal ansatte findes IKKE som bulkfil ("Beskaeftigelse"
 // svarer 404: kendt entitet, ingen aktuel fil), og hentes derfor pr. CVR
 // gennem cvr-datafordeler-funktionen når en virksomhed skal beriges.
+//
+// DERFOR TÆLLER VI PRODUKTIONSENHEDER. Markedsanalysen skal kunne vise de
+// STORE leverandører først, og uden ansatte eller omsætning for hele
+// populationen er antallet af aktive forretningssteder det bedste
+// størrelsessignal, der findes i bulk. Det er skarpt netop fordi det er
+// skævt: 844.679 af 870.461 virksomheder har præcis ét sted, 977 har ti
+// eller flere. Se supabase/migrations/20260814090000 for hvad målet
+// dermed kan og ikke kan bruges til.
 
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -255,8 +264,17 @@ async function main() {
   process.stdout.write("Læser virksomheder… ");
 
   const enhedTilCvr = new Map();
+  // Stiftelsesdatoen er ikke et størrelsesmål, men den er det eneste billige
+  // signal om, hvor længe en leverandør har eksisteret — og den afgør
+  // rækkefølgen mellem to virksomheder med samme størrelsesscore.
+  const startdatoer = new Map();
   for await (const r of csvObjekter(virksomhedFil)) {
-    if (r.id && r.CVRNummer) enhedTilCvr.set(r.id, Number(r.CVRNummer));
+    if (!r.id || !r.CVRNummer) continue;
+    const cvr = Number(r.CVRNummer);
+    enhedTilCvr.set(r.id, cvr);
+    if (r.virksomhedStartdato && !startdatoer.has(cvr)) {
+      startdatoer.set(cvr, r.virksomhedStartdato);
+    }
   }
   console.log(`${enhedTilCvr.size.toLocaleString("da-DK")} aktive virksomheder`);
 
@@ -289,6 +307,8 @@ async function main() {
       postdistrikt: null,
       virksomhedsform: null,
       virksomhedsformkode: null,
+      antal_penheder: 0,
+      startdato: startdatoer.get(cvr) || null,
       opdateret: startet
     });
   }
@@ -363,7 +383,33 @@ async function main() {
   }
   console.log(`${medForm.toLocaleString("da-DK")} med selskabsform`);
 
-  // Trin 6: skriv. Ét gennemløb frem for én opdatering pr. virksomhed —
+  // Trin 6: produktionsenheder — antallet af aktive forretningssteder.
+  //
+  // Filen joiner IKKE på CVREnhedsId som de øvrige; den har CVR-nummeret
+  // direkte i tilknyttetVirksomhedsCVRNummer. Tre ting skal være åbne, for at
+  // en enhed tæller: enheden må ikke være ophørt, tilknytningen til
+  // virksomheden må ikke være ophørt (en P-enhed kan flytte til et andet
+  // CVR-nummer ved et frasalg), og rækken skal være den gældende.
+  const penhedFil = await hentOgUdpak("Produktionsenhed", apiKey);
+  process.stdout.write("Læser produktionsenheder… ");
+
+  let penhederIalt = 0;
+  for await (const r of csvObjekter(penhedFil)) {
+    if (r.produktionsenhedOphoersdato || r.tilknyttetTilVirksomhedOphoersdato) continue;
+    if (!erGældende(r)) continue;
+    const post = poster.get(Number(r.tilknyttetVirksomhedsCVRNummer));
+    if (!post) continue;
+    post.antal_penheder++;
+    penhederIalt++;
+  }
+
+  const medFlereSteder = [...poster.values()].filter((p) => p.antal_penheder >= 2).length;
+  console.log(
+    `${penhederIalt.toLocaleString("da-DK")} enheder · ` +
+    `${medFlereSteder.toLocaleString("da-DK")} virksomheder med flere end ét sted`
+  );
+
+  // Trin 7: skriv. Ét gennemløb frem for én opdatering pr. virksomhed —
   // 870.000 enkeltopdateringer gennem PostgREST ville tage timer.
   process.stdout.write(TØRLØB ? "Tørløb — samler rækker uden at skrive… " : "Skriver til databasen… ");
 
@@ -404,6 +450,14 @@ async function main() {
 
     const medBi = [...poster.values()].filter((p) => p.bibrancher?.length).length;
     console.log(`  bibrancher     ${medBi.toLocaleString("da-DK").padStart(9)}  ${pct(medBi)}`);
+
+    const medPenhed = [...poster.values()].filter((p) => p.antal_penheder > 0).length;
+    const medStartdato = [...poster.values()].filter((p) => p.startdato).length;
+    console.log(`  p-enheder      ${medPenhed.toLocaleString("da-DK").padStart(9)}  ${pct(medPenhed)}`);
+    console.log(`  startdato      ${medStartdato.toLocaleString("da-DK").padStart(9)}  ${pct(medStartdato)}`);
+    // Falder denne til nul, er hele størrelsesrangeringen slået fra uden at
+    // noget fejler — listen ville se rigtig ud og vise vilkårlige firmaer.
+    console.log(`  flere steder   ${medFlereSteder.toLocaleString("da-DK").padStart(9)}  ${pct(medFlereSteder)}`);
 
     const prøve = [...poster.values()].find((p) => p.branchekode && p.kommunekode && p.virksomhedsform);
     console.log(`\nEksempelrække:\n  ${JSON.stringify(prøve)}`);

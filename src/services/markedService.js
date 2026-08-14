@@ -68,13 +68,44 @@ export function hentMarkedsstatistik(branchekoder, { kommunekoder = [] } = {}) {
   return kald({ handling: "statistik", branchekoder, kommunekoder });
 }
 
-// De konkrete virksomheder. Rangeringen er hovedbranche før bibranche og
-// derefter vilkårlig-men-stabil — en meningsfuld rækkefølge kræver økonomi og
-// track record, som først hentes i berigelsen. Derfor er "maks" et udsnit,
-// ikke en top-liste, og det skal fremgå af UI'et.
-export function soegMarked(branchekoder, { kommunekoder = [], maks = 200 } = {}) {
-  return kald({ handling: "soeg", branchekoder, kommunekoder, maks })
-    .then((svar) => svar.virksomheder ?? []);
+// Klasserne er ordnede fra størst til mindst, og afgrænsningen er "mindst
+// denne": et filter på 'selskab' medtager også 'flere_adresser' og
+// 'landsdaekkende'.
+export const KLASSE_ETIKET = {
+  landsdaekkende: "10+ adresser",
+  flere_adresser: "Flere adresser",
+  selskab: "Selskab, ét sted",
+  mikro: "Enkeltmand m.v."
+};
+
+// De konkrete virksomheder — de STØRSTE først.
+//
+// Rangeringen sker i databasen på antal forretningssteder og selskabsform (se
+// migration 20260814090000). Det er afgørende at afgrænsningen ligger dér og
+// ikke her: i et rigtigt marked er 4 % af virksomhederne store nok til at
+// byde på en samlet opgave, så et udsnit på 200 vilkårlige rækker rummer ca.
+// otte af dem. Filtrerer man det udsnit i browseren, har man filtreret de
+// forkerte 200.
+//
+// MÅLET ER UDSTRÆKNING, IKKE OMSÆTNING. CVR udstiller hverken ansatte eller
+// omsætning i bulk. Et rådgivningshus med 300 ansatte på én adresse ligger
+// derfor i samme klasse som et enmands-ApS. Rangeringen er en forsortering,
+// der gør listen brugbar — de rigtige tal kommer fra regnskabsberigelsen, og
+// UI'et skal sige det.
+export function soegMarked(
+  branchekoder,
+  { kommunekoder = [], maks = 200, mindstKlasse = null, sortering = "stoerrelse" } = {}
+) {
+  return kald({
+    handling: "soeg",
+    branchekoder,
+    kommunekoder,
+    maks,
+    // 'mikro' er bunden af skalaen og betyder det samme som intet filter.
+    // Sendes den med, ville Edge Function'en afvise den som ukendt klasse.
+    mindstKlasse: mindstKlasse && mindstKlasse !== "mikro" ? mindstKlasse : null,
+    sortering
+  }).then((svar) => svar.virksomheder ?? []);
 }
 
 // Hvor koncentreret er markedet? Bruges til at vurdere om der reelt er
@@ -96,10 +127,30 @@ export function beregnKoncentration(statistik) {
 
   const topKommune = statistik.prKommune?.[0];
 
+  // Størrelsesfordelingen er det tal, spørgsmålet om delkontrakter reelt
+  // hænger på: hvor mange i markedet er overhovedet en organisation frem for
+  // en person? Nøglen kan mangle helt, hvis statistikken kommer fra en
+  // database, der endnu ikke har kørt indlæsningen med P-enheder.
+  const prStoerrelse = statistik.prStoerrelse ?? {};
+  const antalPrKlasse = {
+    mikro: prStoerrelse.mikro ?? 0,
+    selskab: prStoerrelse.selskab ?? 0,
+    flere_adresser: prStoerrelse.flere_adresser ?? 0,
+    landsdaekkende: prStoerrelse.landsdaekkende ?? 0
+  };
+  const flereAdresser = antalPrKlasse.flere_adresser + antalPrKlasse.landsdaekkende;
+
   return {
     ialt,
     andelEnkeltmand: enkeltmand / ialt,
     andelKunBibranche: (statistik.kunBibranche ?? 0) / ialt,
-    topKommune: topKommune ? { navn: topKommune.navn, andel: topKommune.antal / ialt } : null
+    topKommune: topKommune ? { navn: topKommune.navn, andel: topKommune.antal / ialt } : null,
+    antalPrKlasse,
+    antalFlereAdresser: flereAdresser,
+    andelFlereAdresser: flereAdresser / ialt,
+    // "Ikke enkeltmandsvirksomhed" — den bredeste af de tre afgrænsninger
+    // UI'et tilbyder, og den der svarer til "kan i det mindste have ansatte".
+    antalOverMikro: ialt - antalPrKlasse.mikro,
+    andelOverMikro: (ialt - antalPrKlasse.mikro) / ialt
   };
 }
