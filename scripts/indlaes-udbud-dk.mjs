@@ -37,13 +37,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const FULD = process.argv.includes("--fuld");
-const TØRLØB = process.argv.includes("--toerloeb");
-const DEMO = process.argv.includes("--demo");
-
-const KILDER = ["ALLE", "TED", "DKUDBUD"];
-const kildeArg = process.argv[process.argv.indexOf("--kilde") + 1];
-const KILDE = process.argv.includes("--kilde") && KILDER.includes(kildeArg) ? kildeArg : "ALLE";
+export const KILDER = ["ALLE", "TED", "DKUDBUD"];
 
 const SIDESTOERRELSE = 100;
 const BATCH = 200;
@@ -53,9 +47,18 @@ const TOKEN_LEVETID_MS = 8 * 60 * 1000;
 // Overlap ved inkrementel hentning, se noten om rækkefølge ovenfor.
 const VANDMAERKE_OVERLAP_MS = 60 * 60 * 1000;
 
-const MILJOE = DEMO
-  ? { token: "https://erstpreprod.virk.dk/auth/token", api: "https://api-demo.udbud.dk/udbud", pw: "UDBUD_DK_PASSWORD_DEMO" }
-  : { token: "https://erst.virk.dk/auth/token", api: "https://api.udbud.dk/udbud", pw: "UDBUD_DK_PASSWORD_PROD" };
+export const MILJOEER = {
+  prod: {
+    token: "https://erst.virk.dk/auth/token",
+    api: "https://api.udbud.dk/udbud",
+    pw: "UDBUD_DK_PASSWORD_PROD"
+  },
+  demo: {
+    token: "https://erstpreprod.virk.dk/auth/token",
+    api: "https://api-demo.udbud.dk/udbud",
+    pw: "UDBUD_DK_PASSWORD_DEMO"
+  }
+};
 
 // ---------------------------------------------------------------- opsætning
 
@@ -371,17 +374,22 @@ function udtraek(container, xml) {
 
 // ----------------------------------------------------------------- udbud.dk
 
+// Tokenet caches på tværs af sider. Miljøet gemmes med, så et skift fra DEMO
+// til PROD i samme proces ikke genbruger et token, der hører til det andet.
 let token = null;
 let tokenHentet = 0;
+let tokenMiljoe = null;
 
-async function hentToken(env) {
-  if (token && Date.now() - tokenHentet < TOKEN_LEVETID_MS) return token;
+async function hentToken(env, miljoe) {
+  if (token && tokenMiljoe === miljoe.token && Date.now() - tokenHentet < TOKEN_LEVETID_MS) {
+    return token;
+  }
 
   const basic = Buffer.from(
-    `${kræv(env, "UDBUD_DK_BRUGER")}:${kræv(env, MILJOE.pw)}`
+    `${kræv(env, "UDBUD_DK_BRUGER")}:${kræv(env, miljoe.pw)}`
   ).toString("base64");
 
-  const svar = await fetch(MILJOE.token, {
+  const svar = await fetch(miljoe.token, {
     method: "POST",
     headers: {
       Authorization: `Basic ${basic}`,
@@ -399,20 +407,21 @@ async function hentToken(env) {
 
   token = (await svar.json()).access_token;
   tokenHentet = Date.now();
+  tokenMiljoe = miljoe.token;
   return token;
 }
 
 const HENT_FORSØG = 4;
 
-async function hentSide(env, side, siden) {
-  const url = new URL(`${MILJOE.api}/ekstern-data/bekendtgoerelse/v1/fraKilde/${KILDE}`);
+async function hentSide(env, { miljoe, kilde, side, siden }) {
+  const url = new URL(`${miljoe.api}/ekstern-data/bekendtgoerelse/v1/fraKilde/${kilde}`);
   url.searchParams.set("page", String(side));
   url.searchParams.set("size", String(SIDESTOERRELSE));
   if (siden) url.searchParams.set("since", siden);
 
   for (let forsøg = 1; ; forsøg++) {
     try {
-      const t = await hentToken(env);
+      const t = await hentToken(env, miljoe);
       const svar = await fetch(url, { headers: { Authorization: `Bearer ${t}` } });
 
       // 416 = siden findes ikke; det er sådan API'et siger "ikke mere".
@@ -448,8 +457,10 @@ async function restKald(env, sti, init = {}) {
 
 const SKRIV_FORSØG = 5;
 
-async function skrivBatch(env, raekker) {
-  if (TØRLØB || !raekker.length) return;
+async function skrivBatch(env, raekker, { toerloeb, log }) {
+  // Returnerer antallet der faktisk blev skrevet — 0 i tørløb. Cron-kørslen
+  // rapporterer tallet videre, og "skrev 100" om et tørløb ville være løgn.
+  if (toerloeb || !raekker.length) return 0;
 
   for (let forsøg = 1; ; forsøg++) {
     let svar, netværksfejl;
@@ -463,7 +474,7 @@ async function skrivBatch(env, raekker) {
       netværksfejl = e;
     }
 
-    if (svar?.ok) return;
+    if (svar?.ok) return raekker.length;
 
     const detalje = netværksfejl
       ? netværksfejl.message
@@ -472,16 +483,16 @@ async function skrivBatch(env, raekker) {
     if (forsøg >= SKRIV_FORSØG) {
       throw new Error(`Skrivning fejlede efter ${SKRIV_FORSØG} forsøg: ${detalje}`);
     }
-    process.stdout.write(`\n  skriveforsøg ${forsøg}/${SKRIV_FORSØG}: ${detalje.slice(0, 90)} `);
+    log(`skriveforsøg ${forsøg}/${SKRIV_FORSØG}: ${detalje.slice(0, 90)}`);
     await new Promise((r) => setTimeout(r, 2000 * forsøg));
   }
 }
 
-async function senesteRegistrering(env) {
+export async function senesteRegistrering(env, kilde) {
   // Afgrænset til den kilde vi henter: kører man --kilde DKUDBUD efter en
   // fuld ALLE-kørsel, ville et fælles vandmærke pege på den nyeste
   // TED-bekendtgørelse og springe alle ældre danske over.
-  const filter = KILDE === "ALLE" ? "" : `&kilde=eq.${KILDE}`;
+  const filter = kilde === "ALLE" ? "" : `&kilde=eq.${kilde}`;
   const svar = await restKald(
     env,
     `udbud_bekendtgoerelse?select=registreringstidspunkt${filter}` +
@@ -492,92 +503,154 @@ async function senesteRegistrering(env) {
   return raekker[0]?.registreringstidspunkt ?? null;
 }
 
-// --------------------------------------------------------------------- kør
-
-async function main() {
-  const env = await laesEnv();
-
+// ------------------------------------------------------------------- synken
+//
+// Delt mellem CLI'et nedenfor og den daglige cron-kørsel i api/synk-udbud.js.
+// Begge skal hente PRÆCIS det samme og skrive det på PRÆCIS samme måde — lå
+// løkken to steder, ville vandmærkelogikken kunne komme til at gøre to
+// forskellige ting, og gaps i indekset er ikke til at se udefra.
+//
+// maksSider er en sikkerhedsventil for kørslen i en serverless-funktion, hvor
+// der er et loft på svartiden. VIGTIGT: rammes den, kan der opstå huller i
+// indekset — API'et leverer IKKE bekendtgørelserne sorteret efter
+// registreringstidspunkt, så de sider vi ikke nåede kan indeholde noget
+// ældre, mens vandmærket (max i tabellen) allerede er rykket frem. Derfor
+// meldes det tilbage som en advarsel frem for at blive slugt, og
+// dagsforbruget (~50 bekendtgørelser = 1 side) ligger så langt under loftet,
+// at det kun kan ske efter et længere udfald. Sker det, er svaret en
+// --fuld-kørsel, ikke en ny cron.
+export async function synkroniser({
+  env,
+  kilde = "ALLE",
+  fuld = false,
+  toerloeb = false,
+  miljoe = MILJOEER.prod,
+  maksSider = Infinity,
+  log = () => {},
+  fremdrift = () => {}
+} = {}) {
   let siden = null;
-  if (!FULD) {
-    const seneste = await senesteRegistrering(env);
+  if (!fuld) {
+    const seneste = await senesteRegistrering(env, kilde);
     if (seneste) {
       // Formatet er ISO uden tidszone — API'et fortolker alt som
       // Europe/Copenhagen, og en medsendt zone afvises.
       siden = new Date(new Date(seneste).getTime() - VANDMAERKE_OVERLAP_MS)
         .toISOString()
         .slice(0, 19);
-      console.log(`Inkrementelt (${KILDE}): henter alt registreret efter ${siden}`);
+      log(`Inkrementelt (${kilde}): henter alt registreret efter ${siden}`);
     } else {
-      console.log("Tabellen er tom — henter alt (svarer til --fuld).");
+      log("Tabellen er tom — henter alt (svarer til --fuld).");
     }
   } else {
-    console.log(`Fuld hentning fra kilde ${KILDE}.`);
+    log(`Fuld hentning fra kilde ${kilde}.`);
   }
 
+  const stat = {
+    kilde,
+    siden,
+    fuld: fuld || !siden,
+    totalt: null,
+    sider: 0,
+    laest: 0,
+    skrevet: 0,
+    sprunget: 0,
+    prKilde: { TED: 0, DKUDBUD: 0 },
+    prArt: {},
+    udenCpv: 0,
+    udenTitel: 0,
+    naaedeLoft: false
+  };
+
   let side = 1;
-  let laest = 0;
-  let skrevet = 0;
-  let totalt = null;
-  const prKilde = { TED: 0, DKUDBUD: 0 };
-  const prArt = {};
-  let udenCpv = 0;
-  let udenTitel = 0;
   const batch = [];
 
   for (;;) {
-    const data = await hentSide(env, side, siden);
-    if (!data?.bekendtgoerelser?.length) break;
+    if (stat.sider >= maksSider) {
+      stat.naaedeLoft = true;
+      log(`Stoppede ved sideloftet (${maksSider} sider) — se noten om huller i indekset.`);
+      break;
+    }
 
-    if (totalt === null) {
-      totalt = data.totalt;
-      console.log(`${totalt.toLocaleString("da-DK")} bekendtgørelser at hente.`);
+    const data = await hentSide(env, { miljoe, kilde, side, siden });
+    if (!data?.bekendtgoerelser?.length) break;
+    stat.sider++;
+
+    if (stat.totalt === null) {
+      stat.totalt = data.totalt;
+      log(`${(data.totalt ?? 0).toLocaleString("da-DK")} bekendtgørelser at hente.`);
     }
 
     for (const container of data.bekendtgoerelser) {
-      laest++;
+      stat.laest++;
       let raekke;
       try {
         const xml = Buffer.from(container.bekendtgoerelseXml, "base64").toString("utf8");
         raekke = udtraek(container, xml);
       } catch (e) {
         // Én ulæselig bekendtgørelse må ikke vælte en kørsel på 23.660.
-        console.log(`\n  springer ${container.noticeId} over: ${e.message}`);
+        stat.sprunget++;
+        log(`springer ${container.noticeId} over: ${e.message}`);
         continue;
       }
 
-      prKilde[raekke.kilde] = (prKilde[raekke.kilde] ?? 0) + 1;
-      prArt[raekke.art] = (prArt[raekke.art] ?? 0) + 1;
-      if (!raekke.cpv_koder.length) udenCpv++;
-      if (!raekke.titel) udenTitel++;
+      stat.prKilde[raekke.kilde] = (stat.prKilde[raekke.kilde] ?? 0) + 1;
+      stat.prArt[raekke.art] = (stat.prArt[raekke.art] ?? 0) + 1;
+      if (!raekke.cpv_koder.length) stat.udenCpv++;
+      if (!raekke.titel) stat.udenTitel++;
 
       batch.push(raekke);
       if (batch.length >= BATCH) {
-        await skrivBatch(env, batch.splice(0));
-        skrevet += BATCH;
+        stat.skrevet += await skrivBatch(env, batch.splice(0), { toerloeb, log });
       }
     }
 
-    process.stdout.write(`\rside ${side} · ${laest.toLocaleString("da-DK")} læst`);
+    fremdrift(`side ${side} · ${stat.laest.toLocaleString("da-DK")} læst`);
     if (data.bekendtgoerelser.length < SIDESTOERRELSE) break;
     side++;
   }
 
   if (batch.length) {
-    await skrivBatch(env, batch);
-    skrevet += batch.length;
+    stat.skrevet += await skrivBatch(env, batch, { toerloeb, log });
   }
 
-  console.log(`\n\n${TØRLØB ? "Ville skrive" : "Skrev"} ${skrevet.toLocaleString("da-DK")} bekendtgørelser.`);
-  console.log(`  pr. kilde:  ${Object.entries(prKilde).map(([k, n]) => `${k} ${n.toLocaleString("da-DK")}`).join(" · ")}`);
-  console.log(`  pr. art:    ${Object.entries(prArt).map(([k, n]) => `${k} ${n.toLocaleString("da-DK")}`).join(" · ")}`);
+  return stat;
+}
+
+// --------------------------------------------------------------------- kør
+
+async function main() {
+  const fuld = process.argv.includes("--fuld");
+  const toerloeb = process.argv.includes("--toerloeb");
+  const demo = process.argv.includes("--demo");
+
+  const kildeArg = process.argv[process.argv.indexOf("--kilde") + 1];
+  const kilde =
+    process.argv.includes("--kilde") && KILDER.includes(kildeArg) ? kildeArg : "ALLE";
+
+  const env = await laesEnv();
+  const stat = await synkroniser({
+    env,
+    kilde,
+    fuld,
+    toerloeb,
+    miljoe: demo ? MILJOEER.demo : MILJOEER.prod,
+    log: (besked) => console.log(besked),
+    fremdrift: (besked) => process.stdout.write(`\r${besked}`)
+  });
+
+  const antal = toerloeb ? stat.laest - stat.sprunget : stat.skrevet;
+  console.log(`\n\n${toerloeb ? "Ville skrive" : "Skrev"} ${antal.toLocaleString("da-DK")} bekendtgørelser.`);
+  console.log(`  pr. kilde:  ${Object.entries(stat.prKilde).map(([k, n]) => `${k} ${n.toLocaleString("da-DK")}`).join(" · ")}`);
+  console.log(`  pr. art:    ${Object.entries(stat.prArt).map(([k, n]) => `${k} ${n.toLocaleString("da-DK")}`).join(" · ")}`);
 
   // Dækningsgraderne er tørløbets egentlige resultat: falder de, har kilden
   // ændret et elementnavn, og en rigtig kørsel ville skrive tomme felter.
-  const pct = (n) => `${(((laest - n) / Math.max(laest, 1)) * 100).toFixed(1)} %`;
-  console.log(`  med CPV:    ${pct(udenCpv)}`);
-  console.log(`  med titel:  ${pct(udenTitel)}`);
+  const pct = (n) => `${(((stat.laest - n) / Math.max(stat.laest, 1)) * 100).toFixed(1)} %`;
+  console.log(`  med CPV:    ${pct(stat.udenCpv)}`);
+  console.log(`  med titel:  ${pct(stat.udenTitel)}`);
 
-  if (TØRLØB) console.log("\nIntet blev skrevet. Kør uden --toerloeb for at indlæse.");
+  if (toerloeb) console.log("\nIntet blev skrevet. Kør uden --toerloeb for at indlæse.");
 }
 
 // Parseren afprøves mod rigtige bekendtgørelser i scripts/test-udbud-parser.mjs.

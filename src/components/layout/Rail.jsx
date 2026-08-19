@@ -19,7 +19,11 @@ const NAV_ITEMS = [
   { id: "company", label: "Virksomhedsopslag", icon: "building" },
   { id: "tenders", label: "Udbud & markedsanalyse", icon: "doc" },
   { id: "bidder", label: "Tilbudsgiver-radar", icon: "radar" },
-  { id: "udbudssoegning", label: "Udbudssøgning", icon: "search" }
+  { id: "udbudssoegning", label: "Udbudssøgning", icon: "search" },
+  // Overvågningen står under søgningen, fordi den er den samme kilde set fra
+  // en anden vinkel: søgningen er noget man gør, overvågningen noget man
+  // kigger på. Rækkefølgen holder de to udbudsindgange samlet nederst.
+  { id: "nyeudbud", label: "Nye udbud i mit felt", icon: "spark" }
 ];
 
 // Monogram i stedet for et logo vi ikke har: fire datapunkter og en linje —

@@ -2,6 +2,8 @@
 # deploy (uden git-integration) — .cvr-data (flere hundrede MB hentede
 # CVR-filer) skal aldrig med i deploy-uploaden.
 .cvr-data
+# Prøvebekendtgørelser til parsertesten — hører til på maskinen.
+.udbud-proever
 node_modules
 dist
 .git

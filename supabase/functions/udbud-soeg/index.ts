@@ -51,7 +51,12 @@ Deno.serve(async (req) => {
   // CPV-koder afvises frem for at blive filtreret bort i stilhed: en
   // forkert kode ville give et tomt resultat, der ligner "der er ingen udbud
   // i dette felt" — den fejl er ubehagelig, netop fordi den ligner et svar.
-  const cpvKoder = tekstliste(krop.cpvKoder, null, 25).map((k) => k.split("-")[0].trim());
+  // Loftet er 100 og ikke 25: overvågningssiden har 79 koder i sin liste.
+  // Den sender kun de tre bredeste, fordi matchet er hierarkisk (se
+  // src/lib/cpv.js), men slår man et felt fra, står feltets undere tilbage som
+  // hver sit mønster — og en stille afkortning ville så vise et resultat, der
+  // ligner et svar og mangler et felt.
+  const cpvKoder = tekstliste(krop.cpvKoder, null, 100).map((k) => k.split("-")[0].trim());
   const ugyldige = cpvKoder.filter((k) => !ER_CPV.test(k));
   if (ugyldige.length) {
     return json(
@@ -65,6 +70,15 @@ Deno.serve(async (req) => {
   const arter = tekstliste(krop.arter, ARTER, 4);
   const kunAabne = krop.kunAabne === true;
   const sortering = SORTERINGER.includes(String(krop.sortering)) ? String(krop.sortering) : "frist";
+  // Vinduet regnes om til et tidspunkt HER frem for at lade klienten sende et
+  // timestamp. Så kan grænsen kun være "for N døgn siden", og kaldet kan ikke
+  // bruges til at plukke et vilkårligt historisk vindue ud af tabellen.
+  const dage = Number(krop.dage);
+  const nyereEnd =
+    Number.isFinite(dage) && dage > 0
+      ? new Date(Date.now() - Math.min(dage, 365) * 86_400_000).toISOString()
+      : null;
+
   const maks = Math.min(Math.max(Number(krop.maks) || 50, 1), 200);
   const springOver = Math.min(Math.max(Number(krop.springOver) || 0, 0), 5000);
 
@@ -76,7 +90,8 @@ Deno.serve(async (req) => {
     kun_aabne: kunAabne,
     sortering,
     maks,
-    spring_over: springOver
+    spring_over: springOver,
+    nyere_end: nyereEnd
   });
 
   if (error) {

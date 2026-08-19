@@ -2954,6 +2954,150 @@ html {
 }
 
 /* ==========================================================================
+   Nye udbud — den faste overvågning
+   ----------------------------------------------------------------------------
+   Siden har ét job: kunne læses uden at der bliver valgt noget. Derfor er
+   felterne chips man kan slå FRA (ikke et vælg-selv-felt), og resultatet er
+   grupperet på dag frem for at være én lang liste.
+   ========================================================================== */
+
+/* "ny i dag" er husets accent og ikke et af de tre datasignaler: det siger
+   noget om hvornår vi fik posten, ikke om hvor troværdig kilden er. */
+.pill-ny {
+  background: var(--brand-soft);
+  border-color: var(--brand-line);
+  color: var(--brand);
+}
+
+.felt-raekke {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+/* Feltet er en beslutning om hvad huset kan levere, ikke et filter man
+   skruer på — derfor et bredt kort med kode, navn og omfang frem for en
+   afkrydsningsboks. Slået fra tones den ned uden at forsvinde, så man kan se
+   at overvågningen er indsnævret. */
+.felt-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
+}
+
+.felt-chip:hover {
+  border-color: var(--line-2);
+}
+
+.felt-chip.active {
+  border-color: var(--brand-line);
+  background: var(--brand-soft);
+  color: var(--ink);
+}
+
+.felt-chip:not(.active) {
+  opacity: 0.55;
+}
+
+.felt-chip__kode {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.felt-chip.active .felt-chip__kode {
+  color: var(--brand);
+}
+
+.felt-chip__navn {
+  font-size: 0.9rem;
+  font-weight: 620;
+}
+
+.felt-chip__tal {
+  font-size: 0.72rem;
+  color: var(--ink-2);
+}
+
+/* Den kode der fik udbuddet med på listen. Uden markeringen kan kortet vise
+   seks koder, hvor ingen af dem forklarer hvorfor rækken er her. */
+.tag--traf {
+  border-color: var(--ok-bd);
+  color: var(--ok-fg);
+}
+
+.dag-gruppe + .dag-gruppe {
+  margin-top: var(--s4);
+}
+
+.dag-gruppe__hoved {
+  margin: 0 0 var(--s2);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* Hele kodelisten er dokumentation, ikke betjening: den er lukket som
+   standard, og de tre koder der faktisk afgør søgningen er fremhævet, så
+   listen ikke ser ud som 79 selvstændige filtre. */
+.kode-liste > summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 620;
+  color: var(--ink-2);
+  padding: 6px 0;
+}
+
+.kode-liste > summary:hover {
+  color: var(--ink);
+}
+
+.kode-liste__felt {
+  margin-top: var(--s3);
+}
+
+.kode-liste__felt ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 4px var(--s3);
+}
+
+.kode-liste__felt li {
+  font-size: 0.78rem;
+  color: var(--ink-2);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kode-liste__felt li.er-bred {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.kode-liste__felt li.er-bred .tag--code {
+  border-color: var(--brand-line);
+  color: var(--brand);
+}
+
+/* ==========================================================================
    Print — et opslag ender ofte i udbudsmaterialet som bilag
    ----------------------------------------------------------------------------
    Konsollen skal også kunne printes: den nulstilles til hvid flade med sort

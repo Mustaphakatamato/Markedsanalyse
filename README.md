@@ -26,7 +26,7 @@ Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
 gemmes stadig i browserens `localStorage` — de migreres dog frem ved
 skemaændringer, så et udbud ikke går tabt (se `ProjectsContext`).
 
-## De tre flows
+## Flowene
 
 **Virksomhedsopslag** ([`pages/CompanyLookupPage.jsx`](src/pages/CompanyLookupPage.jsx))
 — søg på navn eller CVR-nummer og få:
@@ -88,6 +88,20 @@ ordregiver, dette er til TILBUDSGIVEREN. Peg på et konkret, aktivt TED-udbud
   ingen data om bud, kun om tildelinger.
 - Egen profil: samme rigtige regnskabs- og TED-data som virksomhedsopslaget,
   plus branchesammenligning, til direkte sammenligning med konkurrentfeltet.
+
+**Udbudssøgning** ([`pages/UdbudssoegningPage.jsx`](src/pages/UdbudssoegningPage.jsx))
+— søg i alle bekendtgørelser fra udbud.dk og afgræns på CPV-kode, kilde, type
+og frist. Både EU-udbud fra TED og de **danske udbud under tærskelværdien**
+(kilde DKUDBUD), som slet ikke findes i TED og dermed ikke i de øvrige flows.
+CPV-valget er hierarkisk: vælger man 72000000, kommer alt under den med.
+
+**Nye udbud i mit felt** ([`pages/NyeUdbudPage.jsx`](src/pages/NyeUdbudPage.jsx))
+— den samme kilde som en fast overvågning frem for en søgning. CPV-listen er
+lagt fast i [`data/cpvOvervaagning.js`](src/data/cpvOvervaagning.js) (79 koder
+inden for programpakker, it-tjenester og rådgivning), og filteret er tid: hvad
+er **registreret** hos udbud.dk inden for de sidste 24 timer / 7 / 30 dage.
+Resultatet er grupperet på dag. Se afsnittet om udbudsindekset for hvorfor
+"nyt" måles på registreringstidspunktet og ikke på fristen.
 
 Flowene er koblet sammen: fra en kandidat-leverandør kan man hoppe direkte til
 virksomhedsopslaget for den pågældende virksomhed ([`App.jsx`](src/App.jsx)).
@@ -483,6 +497,72 @@ XBRL-parsingen bliver i browseren med vilje: Edge Functions har kun 2s CPU-tid
 pr. request, hvilket ikke rækker til et større regnskabsdokument. Proxying er
 async I/O og tæller ikke med.
 
+### Udbudsindekset og den daglige synk
+
+`udbud_bekendtgoerelse` er vores eget indeks over udbud.dk's bekendtgørelser.
+Det findes, fordi **API'et ikke kan søges**: endepunktet
+`ekstern-data/bekendtgoerelse/v1/fraKilde/{TED|DKUDBUD|ALLE}` tager præcis tre
+parametre — `page`, `size` og `since` — og leverer hver bekendtgørelse som
+base64-encoded eForms-XML. Ingen CPV, ingen ordregiver, ingen fritekst. Det er
+et bulk-synk-endepunkt til systemer, der bygger deres eget indeks.
+
+Værdien ligger i **DKUDBUD**: de danske udbud under EU's tærskelværdi. De
+findes ikke i TED og dermed ikke i appens øvrige flows.
+
+**Indlæsning** ([`scripts/indlaes-udbud-dk.mjs`](scripts/indlaes-udbud-dk.mjs)):
+
+```bash
+node scripts/indlaes-udbud-dk.mjs --fuld       # første gang: ~1 GB XML, 237 sider
+node scripts/indlaes-udbud-dk.mjs              # inkrementelt (siden sidste registrering)
+node scripts/indlaes-udbud-dk.mjs --toerloeb   # læs og tæl, skriv intet
+node scripts/indlaes-udbud-dk.mjs --kilde DKUDBUD
+```
+
+Den fulde kørsel skal køres **i hånden én gang**. Derefter holder cron-jobbet
+indekset ajour.
+
+**Den daglige synk** ([`api/synk-udbud.js`](api/synk-udbud.js)) er et
+Vercel-cron-job (`crons` i [`vercel.json`](vercel.json), 05:10 UTC), der kalder
+den samme `synkroniser()` som scriptet — ikke en kopi af den. To ting er værd
+at kende:
+
+- **Hvorfor den ikke er en Edge Function.** eForms-XML skal parses, og Edge
+  Functions har 2 sekunders CPU-tid pr. request. Samme grund til at
+  XBRL-parsingen ligger i browseren og `ted-notice` kun proxier. Browseren
+  kalder aldrig `/api/synk-udbud`; reglen om at alt klient-vendt går gennem
+  Edge Functions ad samme vej i dev og prod står uændret.
+- **Hvorfor den nægter at lave den første indlæsning.** Er tabellen tom,
+  betyder "inkrementelt" i praksis "hent alt", og en serverless-funktion ville
+  timeout midt i og efterlade indekset halvt fyldt med et vandmærke, der
+  springer resten over. Den svarer 409 og henviser til `--fuld`.
+
+Cron-kaldet kræver `CRON_SECRET` i Vercels miljø (Vercel sender den selv som
+`Authorization: Bearer`). Er den ikke sat, svarer endepunktet 500 og henter
+intet — et åbent endepunkt her kunne bruges til at starte en times hentning fra
+udbud.dk i vores navn.
+
+**Vandmærket er registreringstidspunktet**, og det er også det, "nyt" måles på
+i overvågningen. Tre grunde til at det er den rigtige akse: det er den eneste,
+`since` kan filtrere på; en bekendtgørelse kan have en gammel frist og være
+registreret i dag (rettelser, genudbud), og den er reelt ny for en
+tilbudsgiver; og fristen mangler helt på tildelinger og forhåndsmeddelelser.
+Vandmærket trækkes bevidst en time tilbage ved hver kørsel — API'et
+returnerer **ikke** bekendtgørelserne sorteret efter registreringstidspunkt,
+så en post registreret midt i forrige kørsel ville ellers kunne springes over.
+Upserten er idempotent, så overlappet er gratis.
+
+**CPV-hierarkiet** ligger i cifrene, og præfikset er koden uden efterstillede
+nuller: `72000000` → `72`, `48326100` → `483261`. Reglen står i
+`public.cpv_praefiks()` og er spejlet i [`src/lib/cpv.js`](src/lib/cpv.js),
+fordi UI'et skal kunne svare på "dækker denne kode allerede den anden?" uden et
+databasekald. Det er også derfor overvågningens 79 koder sendes som **tre**:
+`minimerCpvKoder()` skærer de 76, der er dækket af 48000000, 72000000 og
+79400000, væk — resultatneutralt, men 76 LIKE-mønstre billigere.
+
+Den hjemmelavede XML-parser afprøves af
+[`scripts/test-udbud-parser.mjs`](scripts/test-udbud-parser.mjs), også mod 50
+rigtige bekendtgørelser hentet med `--hent`.
+
 ### Sanktionslisten
 
 Samme mønster som navneindekset: EU's konsoliderede sanktionsliste (Financial
@@ -525,9 +605,10 @@ hvis den nogensinde lukkes ned.
 
 ## Næste skridt
 
-1. **Nationale udbudsdata** (Udbud.dk) — dækker de kontrakter TED ikke gør.
-   Teknisk API-bruger er oprettet og login virker; afventer rolletildeling
-   (`MU_API_DATASYNK`) fra Erhvervsstyrelsen før data kan hentes.
+1. **Nationale udbudsdata** (Udbud.dk) — på plads. Rollen `MU_API_DATASYNK`
+   blev tildelt 14. august 2026, indekset og de to udbudsflows kører, og
+   synken er automatiseret. Mangler kun, at den fulde indlæsning køres én
+   gang på en maskine (se afsnittet om udbudsindekset).
 2. **Auth og udbud i Postgres**, så en markedsundersøgelse kan deles i en
    organisation.
 3. **Automatisér indlæsningen** af navneindekset og sanktionslisten, så de

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { soegUdbud, dageTil, ARTER, KILDER, KONTRAKTTYPE } from "../services/udbudService";
+import { soegUdbud, ARTER, KILDER } from "../services/udbudService";
 import CpvVaelger from "../components/marked/CpvVaelger";
+import UdbudKort from "../components/marked/UdbudKort";
 import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
 import StatusChip from "../components/ui/StatusChip";
 import { Working, SkeletonRows } from "../components/ui/Loading";
-import { formatDanishDate, formatAmount } from "../lib/format";
 
 // Søg i alle bekendtgørelser på udbud.dk og filtrér på CPV.
 //
@@ -24,23 +24,6 @@ import { formatDanishDate, formatAmount } from "../lib/format";
 // migrationen.
 
 const SIDESTOERRELSE = 25;
-
-function Fristmaerke({ frist }) {
-  const dage = dageTil(frist);
-  if (dage == null) return null;
-
-  if (dage < 0) {
-    return <span className="pill">frist overskredet</span>;
-  }
-  // Under en uge er en reel planlægningsbesked, ikke pynt: et udbud med fire
-  // dage tilbage kræver en beslutning i dag.
-  const haster = dage <= 7;
-  return (
-    <span className={`pill ${haster ? "pill-warn" : "pill-ok"}`}>
-      {dage === 0 ? "frist i dag" : dage === 1 ? "1 dag tilbage" : `${dage} dage tilbage`}
-    </span>
-  );
-}
 
 export default function UdbudssoegningPage() {
   const [soegetekst, setSoegetekst] = useState("");
@@ -317,80 +300,7 @@ export default function UdbudssoegningPage() {
         {udbud.length > 0 && (
           <ul className="udbud-liste">
             {udbud.map((u) => (
-              <li className="udbud-kort" key={`${u.noticeId}-${u.version}`}>
-                <div className="udbud-kort__top">
-                  <h4 className="udbud-kort__titel">{u.titel || "Uden titel"}</h4>
-                  <div className="tag-row">
-                    <Fristmaerke frist={u.frist} />
-                    {u.kilde === "DKUDBUD" && (
-                      <span className="pill" title="Dansk udbud under EU's tærskelværdi — findes ikke i TED">
-                        kun dansk
-                      </span>
-                    )}
-                    {u.art !== "udbud" && (
-                      <span className="pill">
-                        {u.art === "forhaandsmeddelelse" ? "forhåndsmeddelelse" : u.art}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <p className="udbud-kort__meta muted small">
-                  {u.ordregiver || "Ukendt ordregiver"}
-                  {u.kontrakttype && ` · ${KONTRAKTTYPE[u.kontrakttype] ?? u.kontrakttype}`}
-                  {u.frist && ` · frist ${formatDanishDate(u.frist)}`}
-                  {u.anslaaetVaerdi != null && u.anslaaetVaerdi > 0 &&
-                    ` · anslået ${formatAmount(u.anslaaetVaerdi, u.valuta)}`}
-                </p>
-
-                {u.beskrivelse && (
-                  <p className="udbud-kort__beskrivelse small">
-                    {u.beskrivelse.length > 260
-                      ? `${u.beskrivelse.slice(0, 260)}…`
-                      : u.beskrivelse}
-                  </p>
-                )}
-
-                <div className="tag-row">
-                  {u.cpvKoder.slice(0, 6).map((k) => (
-                    <span
-                      className={`tag tag--code ${k === u.cpvHoved ? "tag--hoved" : ""}`}
-                      key={k}
-                      title={k === u.cpvHoved ? "Hoved-CPV" : "Supplerende CPV"}
-                    >
-                      {k}
-                    </span>
-                  ))}
-                  {u.cpvKoder.length > 6 && (
-                    <span className="tag">+{u.cpvKoder.length - 6}</span>
-                  )}
-                </div>
-
-                <div className="button-row">
-                  {u.dokumentUrl && (
-                    <a
-                      className="btn btn-secondary btn-sm"
-                      href={u.dokumentUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Udbudsmateriale
-                      <Icon name="external" size={12} />
-                    </a>
-                  )}
-                  {u.publikationsnummer && (
-                    <a
-                      className="btn btn-ghost btn-sm"
-                      href={`https://ted.europa.eu/en/notice/-/detail/${u.publikationsnummer}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Notice i TED
-                      <Icon name="external" size={12} />
-                    </a>
-                  )}
-                </div>
-              </li>
+              <UdbudKort key={`${u.noticeId}-${u.version}`} udbud={u} />
             ))}
           </ul>
         )}

@@ -605,10 +605,11 @@ try {
 
   const su = async (args = {}) => {
     const r = await db.query(
-      `select public.soeg_udbud($1,$2,$3,$4,$5,$6,$7,$8) as j`,
+      `select public.soeg_udbud($1,$2,$3,$4,$5,$6,$7,$8,$9) as j`,
       [
         args.soegetekst ?? null, args.cpv ?? null, args.kilder ?? null, args.arter ?? null,
-        args.kunAabne ?? false, args.sortering ?? "frist", args.maks ?? 100, args.spring ?? 0
+        args.kunAabne ?? false, args.sortering ?? "frist", args.maks ?? 100, args.spring ?? 0,
+        args.nyereEnd ?? null
       ]
     );
     return r.rows[0].j;
@@ -686,6 +687,72 @@ try {
 
   const udenTraf = await su({ cpv: ["03000000"] });
   tjek("CPV uden træf giver 0 og tomt array", udenTraf.ialt === 0 && udenTraf.udbud.length === 0);
+
+  // ------------------------------------------------- overvågningen: nye udbud
+  //
+  // Tidsvinduet er hele grundlaget for "Nye udbud i mit felt". Rammer det
+  // forkert, viser siden gamle udbud som nye — eller melder "0 nye" på en dag,
+  // hvor der kom noget. Ingen af de to fejl er til at se på siden.
+  console.log("\n=== Overvågningen: tidsvindue og CPV-minimering ===");
+
+  const dageSiden = (n) => new Date(Date.now() - n * 86_400_000);
+
+  // u2 er 3 dage gammel og u4 én dag; u1 (10 dage) og u3 (200 dage) skal ud.
+  const vindue7 = await su({ nyereEnd: dageSiden(7), sortering: "nyeste" });
+  tjek("7-dages vindue finder kun det nyligt registrerede",
+    vindue7.ialt === 2 && vindue7.udbud.every((u) => ["u2", "u4"].includes(u.noticeId)),
+    vindue7.udbud.map((u) => u.noticeId).join(","));
+
+  // Sorteringen 'nyeste' skal give nyest FØRST — u4 (1 dag) før u2 (3 dage).
+  tjek("'nyeste' sorterer på registreringstidspunkt, nyest først",
+    vindue7.udbud[0].noticeId === "u4", vindue7.udbud.map((u) => u.noticeId).join(","));
+
+  const vindue1 = await su({ nyereEnd: dageSiden(2) });
+  tjek("24-timers vindue snævrer yderligere ind",
+    vindue1.ialt === 1 && vindue1.udbud[0].noticeId === "u4",
+    vindue1.udbud.map((u) => u.noticeId).join(","));
+
+  // senesteRegistrering er indeksets alder, IKKE søgningens. Den skal derfor
+  // svare det samme, selv når filteret ikke finder noget — det er præcis dér,
+  // den skal kunne skelne "ingen nye udbud" fra "synken er gået i stå".
+  const intetTraf = await su({ cpv: ["03000000"], nyereEnd: dageSiden(1) });
+  const senesteIAlt = await db.query(
+    "select max(registreringstidspunkt) as m from public.udbud_bekendtgoerelse"
+  );
+  tjek("senesteRegistrering måler på hele tabellen, ikke på træfmængden",
+    intetTraf.ialt === 0 &&
+      new Date(intetTraf.senesteRegistrering).getTime() ===
+        new Date(senesteIAlt.rows[0].m).getTime(),
+    `${intetTraf.senesteRegistrering} vs ${senesteIAlt.rows[0].m}`);
+
+  // PARITET MELLEM SQL OG JAVASCRIPT: overvågningen sender tre koder frem for
+  // sine 79, fordi minimerCpvKoder() fjerner dem, der er dækket hierarkisk.
+  // Reglen findes to steder — cpv_praefiks() i SQL og cpvPraefiks() i
+  // src/lib/cpv.js — og hvis de holder op med at være enige, filtrerer siden
+  // efter noget andet end den viser. Testen læser koderne UD AF kilden frem
+  // for at gentage dem, så en ændring i listen fanges her.
+  const { OVERVAAGEDE_FELTER } = await import("../src/data/cpvOvervaagning.js");
+  const { minimerCpvKoder } = await import("../src/lib/cpv.js");
+  const alle79 = OVERVAAGEDE_FELTER.flatMap((f) => f.koder.map((k) => k.kode));
+  const minimeret = minimerCpvKoder(alle79);
+
+  tjek("minimeringen skærer overvågningen ned til de tre brede koder",
+    minimeret.length === 3 && minimeret.join(",") === "48000000,72000000,79400000",
+    minimeret.join(","));
+
+  const medAlle = await su({ cpv: alle79 });
+  const medTre = await su({ cpv: minimeret });
+  tjek("de tre minimerede koder finder præcis det samme som alle 79",
+    medAlle.ialt === medTre.ialt &&
+      medAlle.udbud.map((u) => u.noticeId).join(",") ===
+        medTre.udbud.map((u) => u.noticeId).join(","),
+    `79 koder: ${medAlle.ialt} · 3 koder: ${medTre.ialt}`);
+
+  // Og de skal faktisk finde noget: en paritetstest på to tomme resultater
+  // ville bestå uden at have afprøvet noget som helst.
+  tjek("overvågningens felter rammer it-udbuddene i prøvedata",
+    medTre.ialt === 3 && !medTre.udbud.some((u) => u.noticeId === "u3"),
+    medTre.udbud.map((u) => u.noticeId).join(","));
 
   // ---------------------------------------------------------------- regression
   console.log("\n=== Regression: navnesøgningen virker efter skemaændringerne ===");

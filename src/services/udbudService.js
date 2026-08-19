@@ -32,6 +32,11 @@ export const KONTRAKTTYPE = {
   supplies: "Varer"
 };
 
+// 'dage' afgrænser til bekendtgørelser REGISTRERET inden for de sidste N
+// døgn. Det er overvågningssidens hele grundlag: sortering på 'nyeste' svarer
+// på "hvad er nyest", mens dette svarer på "hvad er kommet til siden i går" —
+// og kun det sidste kan bruges til at holde øje med et felt. Måles på
+// registreringstidspunktet, den samme akse udbud.dk's egen `since` bruger.
 export async function soegUdbud({
   soegetekst = "",
   cpvKoder = [],
@@ -39,6 +44,7 @@ export async function soegUdbud({
   arter = [],
   kunAabne = false,
   sortering = "frist",
+  dage = null,
   maks = 50,
   springOver = 0
 } = {}) {
@@ -49,6 +55,7 @@ export async function soegUdbud({
     arter,
     kunAabne,
     sortering,
+    dage,
     maks,
     springOver
   });
@@ -70,4 +77,17 @@ export function dageTil(frist) {
   const slut = new Date(frist);
   if (Number.isNaN(slut.getTime())) return null;
   return Math.ceil((slut - nu) / 86_400_000);
+}
+
+// Hele døgn siden en bekendtgørelse blev registreret på udbud.dk. Samme
+// begrundelse som dageTil(): "2 dage siden" er den enhed man læser en
+// overvågningsliste i, ikke "for 51 timer siden".
+export function dageSiden(tidspunkt) {
+  if (!tidspunkt) return null;
+  const t = new Date(tidspunkt);
+  if (Number.isNaN(t.getTime())) return null;
+  // Kalenderdøgn frem for 24-timers-blokke: en bekendtgørelse registreret
+  // 23:40 i går er "i går", ikke "i dag", når man ser den kl. 08.
+  const dag = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.max(0, Math.round((dag(new Date()) - dag(t)) / 86_400_000));
 }
