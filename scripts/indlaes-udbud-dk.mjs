@@ -457,10 +457,40 @@ async function restKald(env, sti, init = {}) {
 
 const SKRIV_FORSØG = 5;
 
-async function skrivBatch(env, raekker, { toerloeb, log }) {
-  // Returnerer antallet der faktisk blev skrevet — 0 i tørløb. Cron-kørslen
+// udbud.dk leverer den SAMME bekendtgørelse mere end én gang. Fundet ved en
+// fuld indlæsning 19. august 2026: efter 18.300 læste bekendtgørelser indeholdt
+// ét batch to rækker med samme (noticeId, noticeVersion), og PostgREST svarede
+// HTTP 500, SQLSTATE 21000 — "ON CONFLICT DO UPDATE command cannot affect row a
+// second time". Postgres nægter at upserte samme primærnøgle to gange i ÉN
+// kommando; at gøre det i to kommandoer er derimod fint.
+//
+// Derfor foldes dubletter sammen pr. batch frem for at forsøge at rette det
+// længere oppe: kilden bestemmer selv, hvad den sender, rækkefølgen er
+// vilkårlig (API'et sorterer ikke), og et batch er præcis den enhed, der
+// bliver én kommando. Straddler en dublet to batches, går den igennem af sig
+// selv, fordi det så er to kommandoer.
+//
+// Den SIDSTE forekomst vinder. To rækker med samme nøgle er den samme
+// bekendtgørelse i samme version og bør være identiske; er de mod forventning
+// ikke, er den seneste i svaret det tætteste vi kommer på kildens egen
+// opfattelse. Upserten ville i forvejen have ladet den sidste stå.
+export function fjernDubletter(raekker) {
+  const efterNoegle = new Map();
+  // \u0000 som skilletegn: hverken notice_id (en UUID) eller notice_version
+  // kan indeholde det, så to forskellige nøgler kan ikke støde sammen.
+  for (const r of raekker) efterNoegle.set(`${r.notice_id}\u0000${r.notice_version}`, r);
+  return [...efterNoegle.values()];
+}
+
+async function skrivBatch(env, batch, { toerloeb, log }) {
+  // Returnerer hvor mange der faktisk blev skrevet — 0 i tørløb. Cron-kørslen
   // rapporterer tallet videre, og "skrev 100" om et tørløb ville være løgn.
-  if (toerloeb || !raekker.length) return 0;
+  const raekker = fjernDubletter(batch);
+  const dubletter = batch.length - raekker.length;
+  if (dubletter) {
+    log(`${dubletter} dublet${dubletter === 1 ? "" : "ter"} i batchen foldet sammen`);
+  }
+  if (toerloeb || !raekker.length) return { skrevet: 0, dubletter };
 
   for (let forsøg = 1; ; forsøg++) {
     let svar, netværksfejl;
@@ -474,7 +504,7 @@ async function skrivBatch(env, raekker, { toerloeb, log }) {
       netværksfejl = e;
     }
 
-    if (svar?.ok) return raekker.length;
+    if (svar?.ok) return { skrevet: raekker.length, dubletter };
 
     const detalje = netværksfejl
       ? netværksfejl.message
@@ -555,6 +585,7 @@ export async function synkroniser({
     laest: 0,
     skrevet: 0,
     sprunget: 0,
+    dubletter: 0,
     prKilde: { TED: 0, DKUDBUD: 0 },
     prArt: {},
     udenCpv: 0,
@@ -601,7 +632,9 @@ export async function synkroniser({
 
       batch.push(raekke);
       if (batch.length >= BATCH) {
-        stat.skrevet += await skrivBatch(env, batch.splice(0), { toerloeb, log });
+        const r = await skrivBatch(env, batch.splice(0), { toerloeb, log });
+        stat.skrevet += r.skrevet;
+        stat.dubletter += r.dubletter;
       }
     }
 
@@ -611,7 +644,9 @@ export async function synkroniser({
   }
 
   if (batch.length) {
-    stat.skrevet += await skrivBatch(env, batch, { toerloeb, log });
+    const r = await skrivBatch(env, batch, { toerloeb, log });
+    stat.skrevet += r.skrevet;
+    stat.dubletter += r.dubletter;
   }
 
   return stat;
@@ -647,6 +682,7 @@ async function main() {
   // Dækningsgraderne er tørløbets egentlige resultat: falder de, har kilden
   // ændret et elementnavn, og en rigtig kørsel ville skrive tomme felter.
   const pct = (n) => `${(((stat.laest - n) / Math.max(stat.laest, 1)) * 100).toFixed(1)} %`;
+  if (stat.dubletter) console.log(`  dubletter:  ${stat.dubletter.toLocaleString("da-DK")} foldet sammen`);
   console.log(`  med CPV:    ${pct(stat.udenCpv)}`);
   console.log(`  med titel:  ${pct(stat.udenTitel)}`);
 

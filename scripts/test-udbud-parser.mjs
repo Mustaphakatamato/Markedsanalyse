@@ -16,7 +16,14 @@
 
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { parseXml, udtraek, samlFrist, afkodEntiteter, rensCvr } from "./indlaes-udbud-dk.mjs";
+import {
+  parseXml,
+  udtraek,
+  samlFrist,
+  afkodEntiteter,
+  rensCvr,
+  fjernDubletter
+} from "./indlaes-udbud-dk.mjs";
 
 const PRØVEMAPPE = ".udbud-proever";
 const HENT = process.argv.includes("--hent");
@@ -119,6 +126,47 @@ for (const [raa, forventet] of [
   tjek(`rensCvr(${JSON.stringify(raa)}) = ${JSON.stringify(forventet)}`,
     rensCvr(raa) === forventet, JSON.stringify(rensCvr(raa)));
 }
+
+// ------------------------------------------------------ dubletter i et batch
+
+console.log("\n=== dubletter fra kilden ===");
+
+// FUNDET I PRODUKTION 19. august 2026: en fuld indlæsning væltede efter 18.300
+// læste bekendtgørelser, fordi ét batch indeholdt samme (noticeId,
+// noticeVersion) to gange. PostgREST svarede HTTP 500, SQLSTATE 21000 —
+// Postgres nægter at upserte samme primærnøgle to gange i én kommando. Fejlen
+// kom først 40 minutter inde i kørslen, så den skal fanges her frem for der.
+const r = (id, version, titel) => ({ notice_id: id, notice_version: version, titel });
+
+const udenDubletter = fjernDubletter([r("a", "01", "x"), r("b", "01", "y")]);
+tjek("rækker med forskellige nøgler beholdes alle", udenDubletter.length === 2,
+  udenDubletter.map((x) => x.notice_id).join(","));
+
+const medDublet = fjernDubletter([r("a", "01", "foerste"), r("b", "01", "y"), r("a", "01", "sidste")]);
+tjek("samme notice_id OG version foldes sammen til én", medDublet.length === 2,
+  medDublet.map((x) => `${x.notice_id}/${x.notice_version}`).join(","));
+tjek("den sidste forekomst vinder",
+  medDublet.find((x) => x.notice_id === "a").titel === "sidste",
+  medDublet.find((x) => x.notice_id === "a").titel);
+
+// Versionen er en DEL af primærnøglen: to versioner af samme bekendtgørelse er
+// to rækker, og at folde dem sammen ville tabe en rettelse.
+const toVersioner = fjernDubletter([r("a", "01", "x"), r("a", "02", "y")]);
+tjek("samme notice_id i to versioner er to rækker", toVersioner.length === 2,
+  toVersioner.map((x) => x.notice_version).join(","));
+
+// Map bevarer indsættelsesrækkefølgen, og en nøgle der sættes igen beholder
+// sin oprindelige plads. 'a' skal altså blive stående FØRST med den sidste
+// værdi — ikke flytte ned, hvor dublettten stod. Rækkefølgen betyder ikke
+// noget for upserten, men et skifte i den ville være et tegn på, at
+// sammenfoldningen er skrevet om til noget andet end den er nu.
+tjek("de tilbageblevne rækker beholder deres oprindelige rækkefølge",
+  fjernDubletter([r("a", "01"), r("b", "01"), r("a", "01"), r("c", "01")])
+    .map((x) => x.notice_id).join(",") === "a,b,c",
+  fjernDubletter([r("a", "01"), r("b", "01"), r("a", "01"), r("c", "01")])
+    .map((x) => x.notice_id).join(","));
+
+tjek("tomt batch giver tomt resultat", fjernDubletter([]).length === 0);
 
 // ------------------------------------------------------ rigtige dokumenter
 
