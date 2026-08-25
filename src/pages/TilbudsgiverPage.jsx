@@ -53,11 +53,19 @@ const OWN_COMPANY_NAME = "Devoteam A/S";
 
 // Et refresh mistede tidligere HELE analysen — det udbud man havde hentet,
 // konkurrentfeltet, alt. Vi gemmer derfor kun en "pointer" (notice-nummer +
-// scope), ikke selve de hentede data: en frisk genhentning ved opstart er
-// billig (samme server-side caches som selve opslaget rammer alligevel) og
-// garanterer at tallene stadig er friske, i stedet for at vise noget der
-// kan være blevet forældet siden sidst. Samme "markedsanalyse.*"-nøglemønster
-// som ThemeToggle/ProjectsContext/App.jsx.
+// scope), ikke selve de hentede data: en genhentning er billig (samme
+// server-side caches som selve opslaget rammer alligevel) og garanterer at
+// tallene stadig er friske, i stedet for at vise noget der kan være blevet
+// forældet siden sidst. Samme "markedsanalyse.*"-nøglemønster som
+// ThemeToggle/ProjectsContext/App.jsx.
+//
+// MEN DEN HENTER IKKE AF SIG SELV. Pointeren blev oprindeligt genindlæst
+// automatisk ved opstart, og det var forkert: så åbner flowet ikke på sin
+// egen indgang ("peg på et aktivt udbud"), men midt i en analyse af noget man
+// måske var færdig med for en uge siden — og et udbud, man ikke selv har bedt
+// om, ligner et hardkodet eksempel. Pointeren tilbydes derfor som ét klik
+// ("Fortsæt"), og kan glemmes på stedet. Refresh-beskyttelsen er intakt;
+// det er kun automatikken, der er væk.
 const NOTICE_STORAGE_KEY = "markedsanalyse.tilbudsgiverNotice";
 const SCOPE_STORAGE_KEY = "markedsanalyse.tilbudsgiverScope";
 
@@ -213,6 +221,8 @@ function RequirementAnswerRow({ requirement, saved, onSave, tenderContext, compa
 
 export default function TilbudsgiverPage({ onGoToCompany }) {
   const [noticeInput, setNoticeInput] = useState("");
+  // Det senest åbnede udbud — kun som et TILBUD, se NOTICE_STORAGE_KEY.
+  const [storedNotice, setStoredNotice] = useState(readStoredNotice);
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState(null);
   const [requirements, setRequirements] = useState(null);
@@ -397,6 +407,7 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
       // refresh.
       try {
         localStorage.setItem(NOTICE_STORAGE_KEY, publicationNumber);
+        setStoredNotice(publicationNumber);
       } catch {
         /* private mode — udbuddet holder bare kun sessionen ud */
       }
@@ -489,17 +500,22 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
     loadTenderByPublicationNumber(notice.publicationNumber);
   };
 
-  // Genindlæser det senest fundne udbud ved opstart, hvis der er ét gemt —
-  // se NOTICE_STORAGE_KEY-kommentaren for hvorfor det genhentes frisk i
-  // stedet for at gemme selve resultatet.
-  useEffect(() => {
-    const stored = readStoredNotice();
-    if (!stored) return;
-    setNoticeInput(stored);
-    loadTenderByPublicationNumber(stored);
-    // Skal kun køre ved opstart.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Tilbyder det senest åbnede udbud med ét klik. Bevidst IKKE en useEffect
+  // der henter ved opstart — se NOTICE_STORAGE_KEY.
+  const resumeStoredNotice = () => {
+    if (!storedNotice) return;
+    setNoticeInput(storedNotice);
+    loadTenderByPublicationNumber(storedNotice);
+  };
+
+  const forgetStoredNotice = () => {
+    setStoredNotice(null);
+    try {
+      localStorage.removeItem(NOTICE_STORAGE_KEY);
+    } catch {
+      /* private mode — der var alligevel intet gemt */
+    }
+  };
 
   const ownCompanyFiscalYear = ownFinancials?.status === "ok" ? ownFinancials.fiscalYearEnd?.slice(0, 4) : null;
   const ownBenchmarkForYear =
@@ -620,6 +636,26 @@ export default function TilbudsgiverPage({ onGoToCompany }) {
               )}
             </div>
           </div>
+
+          {/* Det senest åbnede udbud tilbydes, men hentes ikke af sig selv —
+              se NOTICE_STORAGE_KEY. Vises kun før man selv har valgt noget:
+              er en analyse i gang, ville tilbuddet pege væk fra den. */}
+          {storedNotice && status === "idle" && (
+            <div className="row" style={{ marginTop: 12, flexWrap: "wrap" }}>
+              <span className="muted small">Sidst åbnede du</span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={resumeStoredNotice}
+              >
+                <Icon name="back" size={13} />
+                Fortsæt med {storedNotice}
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={forgetStoredNotice}>
+                Glem det
+              </button>
+            </div>
+          )}
 
           {/* Søgefeltet fylder hele bredden (forslagsboksen skal være lige så
               bred), så omfangsvælger og handling deler rækken nedenunder i
