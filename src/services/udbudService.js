@@ -37,6 +37,10 @@ export const KONTRAKTTYPE = {
 // på "hvad er nyest", mens dette svarer på "hvad er kommet til siden i går" —
 // og kun det sidste kan bruges til at holde øje med et felt. Måles på
 // registreringstidspunktet, den samme akse udbud.dk's egen `since` bruger.
+// 'ordregiverCvr' afgrænser til én ordregiver på tværs af alle de navne, den
+// står under i kilden — se ordregiverService.js for hvorfor navnet ikke kan
+// bruges som nøgle. 'ordregiverNavn' er kun til de ordregivere, kilden ikke
+// har givet et CVR-nummer (3,7% af rækkerne); har man begge, vinder CVR.
 export async function soegUdbud({
   soegetekst = "",
   cpvKoder = [],
@@ -46,7 +50,9 @@ export async function soegUdbud({
   sortering = "frist",
   dage = null,
   maks = 50,
-  springOver = 0
+  springOver = 0,
+  ordregiverCvr = null,
+  ordregiverNavn = null
 } = {}) {
   const svar = await postToFunction("/udbud-soeg", {
     soegetekst,
@@ -57,7 +63,9 @@ export async function soegUdbud({
     sortering,
     dage,
     maks,
-    springOver
+    springOver,
+    ordregiverCvr,
+    ordregiverNavn
   });
 
   if (!svar.ok) {

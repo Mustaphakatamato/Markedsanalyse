@@ -880,6 +880,13 @@ hr {
   margin-bottom: var(--s3);
 }
 
+/* Skiftet mellem leverandør- og ordregiveropslag står øverst i konsollen,
+   over eyebrow'en: det ændrer hvad hele siden handler om, og skal derfor
+   læses FØR overskriften, ikke som et filter under den. */
+.opslagstype {
+  margin-bottom: var(--s4);
+}
+
 /* Indersiden af konsollen: selve inputtet står på en let løftet flade, så
    feltet aldrig flyder sammen med den mørke baggrund. */
 .console-bay {

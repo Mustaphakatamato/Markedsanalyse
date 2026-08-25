@@ -754,6 +754,136 @@ try {
     medTre.ialt === 3 && !medTre.udbud.some((u) => u.noticeId === "u3"),
     medTre.udbud.map((u) => u.noticeId).join(","));
 
+  // ------------------------------------------------------ soeg_ordregiver
+  //
+  // HVORFOR DENNE TEST BÆRER MEST: ordregivernavnet i kilden er fritekst, og
+  // hele opslaget hviler på at navnevarianterne foldes sammen på CVR. Går den
+  // sammenfoldning i stykker, viser profilen et TROVÆRDIGT men forkert tal —
+  // en tolvtedel af myndighedens udbud, uden at noget ser forkert ud.
+  console.log("\n=== soeg_ordregiver() og ordregiverfilteret ===");
+
+  // Aarhus Kommune (55133018) er allerede i tabellen som u1. Her kommer to
+  // ekstra navnevarianter på SAMME CVR-nummer, hvoraf den ene slet ikke
+  // indeholder ordet "Aarhus" — præcis mønstret fra produktionen, hvor
+  // "Byggeri København" og "Teknik- og Miljøforvaltningen" er Københavns
+  // Kommune. Plus en ordregiver HELT UDEN CVR-nummer.
+  await db.query(`
+    insert into public.udbud_bekendtgoerelse
+      (notice_id, notice_version, publikationsnummer, kilde, registreringstidspunkt,
+       subtype, art, titel, beskrivelse, kontrakttype, ordregiver, ordregiver_cvr,
+       cpv_hoved, cpv_koder, frist, anslaaet_vaerdi, valuta)
+    values
+      ('u5','01','00333333-2026','TED', now() - interval '5 days','29','tildeling',
+       'Vinduespolering på skoler','Tildeling af rammeaftale.','services',
+       'Aarhus Kommune, Teknik og Miljø','55133018','90911300',
+       array['90911300'], null, 1200000,'DKK'),
+      ('u6','01', null,'DKUDBUD', now() - interval '2 days','DKE3','udbud',
+       'Renovering af biblioteket','Ombygning af publikumsarealer.','works',
+       'Dokk1','55133018','45000000',
+       array['45000000'], now() + interval '14 days', 8000000,'DKK'),
+      ('u7','01', null,'DKUDBUD', now() - interval '4 days','DKE3','udbud',
+       'Tolkeydelser','Tolkning ved samtaler.','services',
+       'Fælleskommunalt Indkøb', null,'79540000',
+       array['79540000'], now() + interval '9 days', 500000,'DKK');
+  `);
+
+  const so = async (tekst, maks = 10) => {
+    const r = await db.query("select public.soeg_ordregiver($1,$2) as j", [tekst, maks]);
+    return r.rows[0].j;
+  };
+
+  const aarhus = await so("aarhus");
+  const aarhusKommune = aarhus.ordregivere.find((o) => o.cvr === "55133018");
+  tjek("navnevarianter foldes sammen på CVR — også den uden søgeordet i navnet",
+    aarhusKommune?.antal === 3 && aarhusKommune.antalNavne === 3,
+    JSON.stringify([aarhusKommune?.antal, aarhusKommune?.antalNavne]));
+
+  tjek("det viste navn er den variant ordregiveren bruger oftest",
+    // Alle tre varianter optræder én gang; ved lige stemmetal vinder den
+    // nyeste, og derefter den korteste. 'Dokk1' er nyest (2 dage).
+    aarhusKommune?.navn === "Dokk1", aarhusKommune?.navn);
+
+  // Det er DENNE vej rundt, opslaget bruges i praksis: man kender en
+  // forvaltning, ikke myndighedens officielle navn.
+  const viaVariant = await so("dokk1");
+  tjek("et træf på ÉN variant giver hele myndighedens bekendtgørelser",
+    viaVariant.ordregivere[0]?.antal === 3,
+    JSON.stringify(viaVariant.ordregivere[0]?.antal));
+
+  const viaCvr = await so("55133018");
+  tjek("et CVR-nummer som søgetekst rammer også",
+    viaCvr.ordregivere.length === 1 && viaCvr.ordregivere[0].antal === 3,
+    JSON.stringify(viaCvr.ordregivere.map((o) => o.antal)));
+
+  tjek("fordelinger og åbne tælles pr. ordregiver, ikke pr. navn",
+    aarhusKommune?.prKilde.TED === 2 && aarhusKommune?.prKilde.DKUDBUD === 1 &&
+      aarhusKommune?.prArt.udbud === 2 && aarhusKommune?.prArt.tildeling === 1 &&
+      aarhusKommune?.aabne === 2,
+    JSON.stringify([aarhusKommune?.prKilde, aarhusKommune?.prArt, aarhusKommune?.aabne]));
+
+  const udenCvr = await so("fælleskommunalt");
+  tjek("ordregiver uden CVR-nummer får sit eget, navnebaserede opslag",
+    udenCvr.ordregivere.length === 1 && udenCvr.ordregivere[0].cvr === null &&
+      udenCvr.ordregivere[0].antal === 1,
+    JSON.stringify(udenCvr.ordregivere));
+
+  const kommune = await so("kommune");
+  tjek("rangering: den største ordregiver først, når ingen har præfiksmatch",
+    // "Odense Kommune" og "Syddjurs Kommune" har ordet inde i navnet;
+    // ingen af de fire begynder med det, så størrelsen afgør — Aarhus
+    // Kommune har 3, resten 1.
+    kommune.ordregivere[0].cvr === "55133018",
+    kommune.ordregivere.map((o) => `${o.navn}:${o.antal}`).join(", "));
+
+  tjek("indeksStart er tabellens horisont, ikke søgningens",
+    new Date(kommune.indeksStart).getTime() ===
+      new Date((await db.query(
+        "select min(registreringstidspunkt) as m from public.udbud_bekendtgoerelse"
+      )).rows[0].m).getTime(),
+    kommune.indeksStart);
+
+  const intetNavn = await so("findes-ikke-nogen-steder");
+  tjek("ukendt navn giver et tomt svar, ikke en fejl",
+    intetNavn.ialt === 0 && Array.isArray(intetNavn.ordregivere) &&
+      intetNavn.ordregivere.length === 0,
+    JSON.stringify(intetNavn));
+
+  // Filteret i soeg_udbud skal fange præcis de samme rækker som optællingen
+  // ovenfor. Står de to tal forskelligt, viser profilen "398
+  // bekendtgørelser" over en liste med 12.
+  const forOrdregiver = await db.query(
+    "select public.soeg_udbud(kun_ordregiver_cvr := $1, sortering := 'nyeste') as j",
+    ["55133018"]
+  );
+  tjek("soeg_udbud's ordregiverfilter finder samme antal som optællingen",
+    forOrdregiver.rows[0].j.ialt === aarhusKommune?.antal,
+    `${forOrdregiver.rows[0].j.ialt} vs ${aarhusKommune?.antal}`);
+
+  const forNavn = await db.query(
+    "select public.soeg_udbud(kun_ordregiver_navn := $1) as j",
+    ["  fælleskommunalt indkøb  "]
+  );
+  tjek("navnefilteret er ufølsomt over for store/små bogstaver og mellemrum",
+    forNavn.rows[0].j.ialt === 1 && forNavn.rows[0].j.udbud[0].noticeId === "u7",
+    JSON.stringify(forNavn.rows[0].j.ialt));
+
+  // Et CVR-nummer vinder over et navn, hvis begge sendes. Ellers ville de to
+  // filtre tilsammen skære alle de øvrige navnevarianter væk — og profilen
+  // ville vise én forvaltnings udbud som hele myndighedens.
+  const baade = await db.query(
+    "select public.soeg_udbud(kun_ordregiver_cvr := $1, kun_ordregiver_navn := $2) as j",
+    ["55133018", "Dokk1"]
+  );
+  tjek("CVR og navn sammen er et SNIT i SQL — derfor sender klienten kun ét",
+    baade.rows[0].j.ialt === 1,
+    `${baade.rows[0].j.ialt} (kun Dokk1-rækken, som forventet af snittet)`);
+
+  const ukendtOrdregiver = await db.query(
+    "select public.soeg_udbud(kun_ordregiver_cvr := $1) as j", ["99999999"]
+  );
+  tjek("ukendt ordregiver giver 0, ikke hele tabellen",
+    ukendtOrdregiver.rows[0].j.ialt === 0, JSON.stringify(ukendtOrdregiver.rows[0].j.ialt));
+
   // ---------------------------------------------------------------- regression
   console.log("\n=== Regression: navnesøgningen virker efter skemaændringerne ===");
   const r = await db.query(`select * from public.soeg_virksomhed('alfa')`);

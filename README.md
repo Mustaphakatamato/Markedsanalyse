@@ -29,7 +29,12 @@ skemaændringer, så et udbud ikke går tabt (se `ProjectsContext`).
 ## Flowene
 
 **Virksomhedsopslag** ([`pages/CompanyLookupPage.jsx`](src/pages/CompanyLookupPage.jsx))
-— søg på navn eller CVR-nummer og få:
+— søg på navn eller CVR-nummer. Siden har to tilstande, fordi det samme
+spørgsmål stilles fra hver sin side af bordet: en **leverandør** måles på hvad
+de har VUNDET, en **ordregiver** på hvad de har UDBUDT. Skiftet står øverst i
+konsollen ([`OpslagsType.jsx`](src/components/marked/OpslagsType.jsx)).
+
+*Leverandør* giver:
 - CVR-stamdata (adresse, branche, selskabsform, ansatte, status)
 - Regnskabstal med årsvælger, plus en udviklingsgraf over alle tilgængelige år
   (omsætning, resultat, egenkapital, balancesum, soliditetsgrad) — kan slås om
@@ -41,6 +46,30 @@ skemaændringer, så et udbud ikke går tabt (se `ProjectsContext`).
 - Risikoprofil: soliditet og overskudsgrad holdt op mod branchegennemsnittet
 - ESG & compliance: rigtigt EU-sanktionstjek, plus CSR/klima/whistleblower som
   **demo-data**, se nedenfor
+
+*Ordregiver* ([`OrdregiverOpslag.jsx`](src/components/marked/OrdregiverOpslag.jsx))
+giver de bekendtgørelser myndigheden selv har offentliggjort, fra to kilder der
+dækker forskellige perioder og derfor står som to lister:
+
+- **udbud.dk-indekset** — både EU-udbud og de danske udbud UNDER
+  tærskelværdien (DKUDBUD), med CPV-koder, frister og link til
+  udbudsmaterialet. Kun tilbage til november 2024, hvor indlæsningen begyndte.
+- **TED direkte** — kun EU-udbud, men hele historikken. For Københavns Kommune
+  2.419 bekendtgørelser tilbage til 2016 mod indeksets 887, og med vinderen på
+  tildelingerne.
+
+Begge opslag sker på **CVR-nummer, ikke navn**. Ordregiverfeltet i eForms er
+fritekst, som myndigheden selv udfylder pr. bekendtgørelse: 23.813
+bekendtgørelser fordeler sig på 1.756 navne, men kun 1.067 CVR-numre.
+Københavns Kommune står under 29 navne ("Teknik- og Miljøforvaltningen",
+"Byggeri København", "Copenhagen Municipality" …), Forsvarsministeriets
+Materiel- og Indkøbsstyrelse under 39 inkl. tre stavefejl af deres eget navn.
+En navnesøgning ville dele én myndighed op i et dusin halve profiler. Derfor
+matches søgeteksten mod alle varianter, mens resultatet grupperes på CVR — og
+TED søges på `buyer-identifier` (ordregiverens nationale
+registreringsnummer), ikke `buyer-name`. Se
+[`ordregiverService.js`](src/services/ordregiverService.js) og migrationen
+[`20260825120000_ordregiver_opslag.sql`](supabase/migrations/20260825120000_ordregiver_opslag.sql).
 
 **Udbud & markedsanalyse** ([`pages/TenderPage.jsx`](src/pages/TenderPage.jsx))
 — opret et udbud og afdæk leverandørmarkedet før udbuddet. Alt bygger på
@@ -509,6 +538,16 @@ et bulk-synk-endepunkt til systemer, der bygger deres eget indeks.
 Værdien ligger i **DKUDBUD**: de danske udbud under EU's tærskelværdi. De
 findes ikke i TED og dermed ikke i appens øvrige flows.
 
+Indekset søges to veje, som deler den samme SQL-funktion `soeg_udbud()`:
+
+| Endepunkt | Svarer på | Brugt af |
+|---|---|---|
+| `udbud-soeg` | Hvilke bekendtgørelser matcher CPV/fritekst/kilde/art — valgfrit for én ordregiver (`ordregiverCvr`) | Udbudssøgning, Nye udbud, ordregiverprofilen |
+| `ordregiver-soeg` | Hvilken ordregiver mener du? Ét svar pr. CVR-nummer med antal, ikke pr. navnevariant | Ordregiveropslagets forslagsliste |
+
+Ordregiverfilteret er på CVR og ikke på navn, fordi navnet i kilden er
+fritekst — se afsnittet om ordregiveropslaget under [Flowene](#flowene).
+
 **Indlæsning** ([`scripts/indlaes-udbud-dk.mjs`](scripts/indlaes-udbud-dk.mjs)):
 
 ```bash
@@ -592,11 +631,21 @@ hvis den nogensinde lukkes ned.
    [`sanctionsService.js`](src/services/sanctionsService.js)), men kun med
    eksakt navnematch — se caveat under Datakilder ovenfor.
 3. **TED dækker kun over EU's tærskelværdi.** De fleste danske kontrakter
-   ligger under og findes slet ikke i appen.
+   ligger under og findes slet ikke i appen. Undtagelsen er
+   udbud.dk-indekset (DKUDBUD), som Udbudssøgning, Nye udbud og
+   ordregiveropslaget bruger.
 4. **Navnematch mod TED har en grænse.** Der er ingen CVR/VAT på vinderen i de
    felter vi henter, så koncernselskaber i andre lande med samme navn kan
    komme med.
-5. **Tilbudsgiver-radaren viser kun EU-udbud** (samme TED-begrænsning som
+5. **Ordregiveropslagets to lister overlapper, og det er med vilje.**
+   udbud.dk-indekset begynder 4. november 2024; TED rækker år længere
+   tilbage. Bekendtgørelser fra indeksets start og frem står derfor i begge
+   lister. En dedublering ville kræve publikationsnummeret som fælles nøgle,
+   og det er tomt på alle DKUDBUD-rækker. 3,7% af rækkerne har desuden intet
+   CVR-nummer på ordregiveren og kan ikke slås sammen med myndighedens
+   øvrige bekendtgørelser — de optræder som deres eget, navnebaserede opslag,
+   markeret "uden CVR" i forslagslisten.
+6. **Tilbudsgiver-radaren viser kun EU-udbud** (samme TED-begrænsning som
    punkt 3), og "konkurrentfeltet" er historiske VINDERE, ikke en
    forudsigelse af hvem der byder på det konkrete udbud — den oplysning er
    ikke offentligt tilgængelig noget sted. Egnethedskravene vises som

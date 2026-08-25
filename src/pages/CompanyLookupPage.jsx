@@ -7,6 +7,8 @@ import { getESGProfile } from "../services/esgService";
 import { checkSanctions } from "../services/sanctionsService";
 import { getIndustryBenchmark, pickClosestBenchmarkYear } from "../services/industryBenchmarkService";
 import TrendChart from "../components/charts/TrendChart";
+import OpslagsType from "../components/marked/OpslagsType";
+import OrdregiverOpslag from "../components/marked/OrdregiverOpslag";
 import Icon from "../components/ui/Icon";
 import SourceBadge from "../components/ui/SourceBadge";
 import StatusChip from "../components/ui/StatusChip";
@@ -34,6 +36,10 @@ function formatCreditRemark(remark) {
 }
 
 export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
+  // Siden har to indgange til det samme spørgsmål: en leverandør måles på
+  // hvad de har VUNDET, en ordregiver på hvad de har UDBUDT. Se
+  // OpslagsType.jsx for hvorfor det er ét flow og ikke to menupunkter.
+  const [opslagstype, setOpslagstype] = useState("leverandoer");
   const [query, setQuery] = useState(prefillQuery || "");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState(null);
@@ -227,6 +233,10 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
 
   useEffect(() => {
     if (!prefillToken) return;
+    // Hoppet fra en markedsanalyse peger altid på en KANDIDATLEVERANDØR, så
+    // det skal også slå siden tilbage til leverandøropslaget — ellers
+    // forsvinder søgningen ind i en tilstand, der slår noget andet op.
+    setOpslagstype("leverandoer");
     setQuery(prefillQuery);
     runSearch(prefillQuery);
     // Skal kun genkøres når hoppet fra markedsanalysen udløser et nyt token.
@@ -338,6 +348,16 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
       ? { label: "Muligt match — kræver verifikation", tone: "warn" }
       : { label: "Intet match", tone: "ok" };
 
+  const typeVaelger = <OpslagsType vaerdi={opslagstype} onVaelg={setOpslagstype} />;
+
+  if (opslagstype === "ordregiver") {
+    return (
+      <main className="page">
+        <OrdregiverOpslag typeVaelger={typeVaelger} />
+      </main>
+    );
+  }
+
   return (
     <main className="page">
       {/* Sidens indgang står på konsolfladen — se .console i index.css for
@@ -345,8 +365,9 @@ export default function CompanyLookupPage({ prefillQuery, prefillToken }) {
           farvesignalerne intakte. */}
       <section className={`console ${status === "loading" ? "is-working" : ""}`}>
         <div className="console-head">
+          {typeVaelger}
           <p className="eyebrow">Due diligence</p>
-          <h3>Slå en virksomhed op</h3>
+          <h3>Slå en leverandør op</h3>
           <p className="lede">
             Navn eller CVR-nummer giver ét samlet billede: CVR-stamdata, vundne EU-udbud (TED),
             økonomi, branchesammenligning og ESG — med kilde på hvert eneste tal.

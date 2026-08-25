@@ -22,6 +22,7 @@ const ER_CPV = /^\d{8}$/;
 const KILDER = ["TED", "DKUDBUD"];
 const ARTER = ["udbud", "forhaandsmeddelelse", "tildeling", "andet"];
 const SORTERINGER = ["frist", "nyeste", "vaerdi"];
+const ER_CVR = /^\d{8}$/;
 
 function tekstliste(vaerdi: unknown, tilladte: string[] | null, maks: number): string[] {
   if (!Array.isArray(vaerdi)) return [];
@@ -79,6 +80,30 @@ Deno.serve(async (req) => {
       ? new Date(Date.now() - Math.min(dage, 365) * 86_400_000).toISOString()
       : null;
 
+  // Ordregiveren afgrænses på CVR-nummer, fordi navnet i kilden er fritekst
+  // med mange varianter pr. myndighed (se migrationen
+  // 20260825120000_ordregiver_opslag.sql). Navnet er kun til de ordregivere,
+  // kilden ikke har givet et CVR-nummer.
+  const ordregiverCvr =
+    typeof krop.ordregiverCvr === "string" && ER_CVR.test(krop.ordregiverCvr.trim())
+      ? krop.ordregiverCvr.trim()
+      : null;
+  const ordregiverNavn =
+    typeof krop.ordregiverNavn === "string" && krop.ordregiverNavn.trim()
+      ? krop.ordregiverNavn.trim().slice(0, 200)
+      : null;
+
+  // Et ugyldigt CVR-nummer afvises frem for at blive ignoreret: uden filteret
+  // ville svaret være HELE indekset præsenteret som én ordregivers
+  // bekendtgørelser — samme slags fejl som en forkert CPV-kode, blot i den
+  // modsatte retning.
+  if (krop.ordregiverCvr != null && !ordregiverCvr) {
+    return json(
+      { error: "ordregiverCvr skal være et 8-cifret CVR-nummer." },
+      { status: 400 }
+    );
+  }
+
   const maks = Math.min(Math.max(Number(krop.maks) || 50, 1), 200);
   const springOver = Math.min(Math.max(Number(krop.springOver) || 0, 0), 5000);
 
@@ -91,7 +116,11 @@ Deno.serve(async (req) => {
     sortering,
     maks,
     spring_over: springOver,
-    nyere_end: nyereEnd
+    nyere_end: nyereEnd,
+    kun_ordregiver_cvr: ordregiverCvr,
+    // Navnet må kun bruges når der ikke er et CVR-nummer at gå efter — ellers
+    // ville de to filtre tilsammen skære alle de andre navnevarianter væk.
+    kun_ordregiver_navn: ordregiverCvr ? null : ordregiverNavn
   });
 
   if (error) {

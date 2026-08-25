@@ -102,8 +102,8 @@ function noticeUrl(notice) {
   );
 }
 
-async function postSearch(query, { page = 1, limit = 25 } = {}) {
-  const response = await postToFunction("/ted", { query, fields: RESULT_FIELDS, page, limit });
+async function postSearch(query, { page = 1, limit = 25, fields = RESULT_FIELDS } = {}) {
+  const response = await postToFunction("/ted", { query, fields, page, limit });
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -134,6 +134,18 @@ function countWinners(field) {
   return Array.isArray(values) ? values.length : values ? 1 : 0;
 }
 
+// TED leverer fristen pr. delkontrakt ("deadline-date-lot") og som
+// dato-med-tidszonemarkør ("2026-08-13Z"), som new Date() ikke kan læse.
+// Vi viser den seneste af lotternes frister: er der først én lot tilbage at
+// byde på, er udbuddet stadig åbent.
+function latestDeadline(field) {
+  const datoer = (Array.isArray(field) ? field : field ? [field] : [])
+    .map((d) => String(d).slice(0, 10))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+  return datoer.length ? datoer[datoer.length - 1] : null;
+}
+
 function normalizeNotice(notice) {
   const currency = Array.isArray(notice["total-value-cur"])
     ? notice["total-value-cur"][0]
@@ -156,6 +168,11 @@ function normalizeNotice(notice) {
     buyerName: firstText(notice["buyer-name"]),
     value: typeof notice["total-value"] === "number" ? notice["total-value"] : null,
     currency: currency || null,
+    // De to sidste er kun udfyldt, når kaldet har bedt om felterne
+    // (ordregiversøgningen gør, de øvrige gør ikke) — de koster en del ekstra
+    // svar-bytes pr. notice, og de fleste flows viser dem ikke.
+    cpvCodes: [...new Set(notice["classification-cpv"] || [])],
+    deadline: latestDeadline(notice["deadline-date-lot"]),
     url: noticeUrl(notice)
   };
 }
@@ -447,4 +464,131 @@ export async function searchActiveNotices(text, options = {}) {
   return (data.notices || [])
     .map(normalizeNotice)
     .filter((n) => n.publicationNumber);
+}
+
+// ---------------------------------------------------------------------------
+// Ordregiversiden: hvad har en myndighed selv offentliggjort i TED
+// ---------------------------------------------------------------------------
+
+// TED's bekendtgørelsestyper grupperet, så de kan filtreres med samme tre
+// begreber som vores eget indeks bruger (udbud / forhåndsmeddelelse /
+// tildeling). Der findes flere typer end de nævnte — derfor er "alle"
+// standardvalget, som IKKE filtrerer: en gruppe der glemte en type ville
+// skjule bekendtgørelser bag noget, der ser ud som et komplet svar.
+//
+// Verificeret mod API'et for CVR 64942212 (Københavns Kommune, 2.419
+// bekendtgørelser i alt): cn-standard 874, can-standard 905, pin-only 178,
+// cn-social 78, veat 60, can-social 54, corr 177, pin-buyer 7, cn-desg 2.
+// Grupperne dækker 2.158 af dem; resten er rettelser (corr) og sjældne typer,
+// som kun "alle" viser.
+export const TED_ARTER = [
+  { vaerdi: "alle", etiket: "Alle", typer: [] },
+  { vaerdi: "udbud", etiket: "Udbud", typer: ["cn-standard", "cn-social", "cn-desg"] },
+  {
+    vaerdi: "forhaandsmeddelelse",
+    etiket: "Forhåndsmeddelelse",
+    typer: ["pin-only", "pin-buyer", "pin-tran", "pin-rtl"]
+  },
+  {
+    vaerdi: "tildeling",
+    etiket: "Tildeling",
+    typer: ["can-standard", "can-social", "can-desg", "veat"]
+  }
+];
+
+// TED's egne typekoder er ikke til at læse for en dansk bruger. Ukendte koder
+// vises råt frem for at blive skjult eller gættet på.
+const TED_TYPE_ETIKET = {
+  "cn-standard": "Udbud",
+  "cn-social": "Udbud (light regime)",
+  "cn-desg": "Projektkonkurrence",
+  "can-standard": "Tildeling",
+  "can-social": "Tildeling (light regime)",
+  "can-desg": "Tildeling (projektkonkurrence)",
+  veat: "Frivillig forudgående gennemsigtighed (VEAT)",
+  "pin-only": "Forhåndsmeddelelse",
+  "pin-buyer": "Forhåndsmeddelelse (køberprofil)",
+  "pin-tran": "Forhåndsmeddelelse",
+  "pin-rtl": "Forhåndsmeddelelse",
+  corr: "Rettelse"
+};
+
+export function tedTypeEtiket(noticeType) {
+  if (!noticeType) return "–";
+  return TED_TYPE_ETIKET[noticeType] || noticeType;
+}
+
+// Ordregiversøgningen har brug for CPV og frist ud over standardfelterne:
+// listen skal kunne læses som "hvad udbyder de, og kan man stadig byde".
+const BUYER_RESULT_FIELDS = [...RESULT_FIELDS, "classification-cpv", "deadline-date-lot"];
+
+/**
+ * Søg efter de bekendtgørelser en ORDREGIVER selv har offentliggjort i TED.
+ *
+ * SØGER PÅ CVR-NUMMER, IKKE NAVN. TED har feltet `buyer-identifier`, som
+ * indeholder ordregiverens nationale registreringsnummer — for danske
+ * myndigheder CVR-nummeret. Det er verificeret direkte mod API'et og er
+ * afgørende af to grunde:
+ *
+ *   1. Navnet er fritekst pr. bekendtgørelse. Københavns Kommune optræder
+ *      under 29 navne i vores indeks alene; et navnematch rammer nogle af
+ *      dem, aldrig alle.
+ *   2. Rækkevidden. `buyer-identifier=64942212` giver 2.419 bekendtgørelser
+ *      tilbage til august 2016, hvor vores eget udbud.dk-indeks har 887 og
+ *      begynder i november 2024. Det er hele grunden til at TED er en
+ *      selvstændig kilde på ordregiverprofilen og ikke bare en dublet.
+ *
+ * `buyer-country=DNK` står med som sikkerhedsnet: identifikatorfeltet er ikke
+ * dansk-specifikt, og enkelte udenlandske ordregivere har indberettet numre
+ * der kolliderer med et CVR-nummer (fx findes "99999999" 25 gange i TED).
+ *
+ * Uden CVR-nummer falder vi tilbage til frasesøgning på navnet — verificeret
+ * mod ordregivernavnet i svaret, samme disciplin som
+ * searchWonContractsByCompany().
+ *
+ * @param {{ cvr?: string|null, navn?: string, art?: string, page?: number, limit?: number }} options
+ * @returns {Promise<{ notices: object[], total: number, viaNavn: boolean }>}
+ */
+export async function searchNoticesByBuyer({
+  cvr = null,
+  navn = "",
+  art = "alle",
+  page = 1,
+  limit = 25
+} = {}) {
+  const rentCvr = /^\d{8}$/.test(String(cvr ?? "").trim()) ? String(cvr).trim() : null;
+  const rentNavn = (navn || "").trim();
+  if (!rentCvr && !rentNavn) return { notices: [], total: 0, viaNavn: false };
+
+  const gruppe = TED_ARTER.find((a) => a.vaerdi === art) || TED_ARTER[0];
+  const typeFilter = gruppe.typer.length ? ` AND notice-type IN (${gruppe.typer.join(" ")})` : "";
+
+  const basis = rentCvr
+    ? `buyer-identifier=${rentCvr} AND buyer-country=DNK`
+    : `buyer-name="${escapeQueryPhrase(rentNavn)}"`;
+
+  const data = await postSearch(`${basis}${typeFilter} SORT BY publication-date DESC`, {
+    page,
+    limit,
+    fields: BUYER_RESULT_FIELDS
+  });
+
+  const notices = (data.notices || []).map(normalizeNotice);
+
+  if (rentCvr) {
+    return { notices, total: data.totalNoticeCount || 0, viaNavn: false };
+  }
+
+  // Navnesøgningen verificeres: TED's frasematch er deres egen fortolkning, og
+  // et forkert træf ville her blive vist som "denne myndigheds eget udbud".
+  const needle = normalizeForMatch(coreCompanyName(rentNavn));
+  const verificeret = notices.filter((n) => normalizeForMatch(n.buyerName).includes(needle));
+
+  return {
+    notices: verificeret,
+    // Ikke totalNoticeCount: den tæller TED's ufiltrerede træf og ville
+    // overdrive antallet efter vores egen verifikation.
+    total: verificeret.length,
+    viaNavn: true
+  };
 }
