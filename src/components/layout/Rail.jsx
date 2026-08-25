@@ -19,11 +19,11 @@ const NAV_ITEMS = [
   { id: "company", label: "Virksomhedsopslag", icon: "building" },
   { id: "tenders", label: "Udbud & markedsanalyse", icon: "doc" },
   { id: "bidder", label: "Tilbudsgiver-radar", icon: "radar" },
-  { id: "udbudssoegning", label: "Udbudssøgning", icon: "search" },
-  // Overvågningen står under søgningen, fordi den er den samme kilde set fra
-  // en anden vinkel: søgningen er noget man gør, overvågningen noget man
-  // kigger på. Rækkefølgen holder de to udbudsindgange samlet nederst.
-  { id: "nyeudbud", label: "Nye udbud i mit felt", icon: "spark" }
+  // Overvågningen ("Nyt i mit felt") har ikke sit eget menupunkt: den er et
+  // gemt filter på Udbudssøgning, fordi det var de samme bekendtgørelser fra
+  // den samme tabel — kun med CPV-koderne valgt på forhånd og et tidsvindue.
+  // Siden husker filtrene, så den vej ind koster stadig ingen valg.
+  { id: "udbudssoegning", label: "Udbudssøgning", icon: "search" }
 ];
 
 // Monogram i stedet for et logo vi ikke har: fire datapunkter og en linje —

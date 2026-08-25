@@ -21,8 +21,8 @@ produktion. Selve datakilderne kræver hverken nøgler eller login.
 
 ## Status
 
-Fungerende MVP med tre flows og seks live datakilder. Backend'en består af ni
-Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
+Fungerende MVP med fire flows og seks live datakilder. Backend'en består af
+femten Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
 gemmes stadig i browserens `localStorage` — de migreres dog frem ved
 skemaændringer, så et udbud ikke går tabt (se `ProjectsContext`).
 
@@ -119,18 +119,32 @@ ordregiver, dette er til TILBUDSGIVEREN. Peg på et konkret, aktivt TED-udbud
   plus branchesammenligning, til direkte sammenligning med konkurrentfeltet.
 
 **Udbudssøgning** ([`pages/UdbudssoegningPage.jsx`](src/pages/UdbudssoegningPage.jsx))
-— søg i alle bekendtgørelser fra udbud.dk og afgræns på CPV-kode, kilde, type
-og frist. Både EU-udbud fra TED og de **danske udbud under tærskelværdien**
-(kilde DKUDBUD), som slet ikke findes i TED og dermed ikke i de øvrige flows.
-CPV-valget er hierarkisk: vælger man 72000000, kommer alt under den med.
+— søg i alle bekendtgørelser fra udbud.dk og afgræns på CPV-kode, kilde, type,
+frist og registreringstidspunkt. Både EU-udbud fra TED og de **danske udbud
+under tærskelværdien** (kilde DKUDBUD), som slet ikke findes i TED og dermed
+ikke i de øvrige flows. CPV-valget er hierarkisk: vælger man 72000000, kommer
+alt under den med.
 
-**Nye udbud i mit felt** ([`pages/NyeUdbudPage.jsx`](src/pages/NyeUdbudPage.jsx))
-— den samme kilde som en fast overvågning frem for en søgning. CPV-listen er
-lagt fast i [`data/cpvOvervaagning.js`](src/data/cpvOvervaagning.js) (79 koder
-inden for programpakker, it-tjenester og rådgivning), og filteret er tid: hvad
-er **registreret** hos udbud.dk inden for de sidste 24 timer / 7 / 30 dage.
-Resultatet er grupperet på dag. Se afsnittet om udbudsindekset for hvorfor
-"nyt" måles på registreringstidspunktet og ikke på fristen.
+Siden rummer også **overvågningen** af husets eget felt, som to gemte filtre:
+
+- **Nyt i mit felt** — hvad er *registreret* hos udbud.dk inden for de sidste
+  24 timer / 7 / 30 dage, sorteret og grupperet på dag. Se afsnittet om
+  udbudsindekset for hvorfor "nyt" måles på registreringstidspunktet og ikke
+  på fristen.
+- **Alt i mit felt** — alle åbne udbud i feltet, nærmeste frist først.
+
+Feltet er de tre brede CPV-koder i
+[`data/cpvOvervaagning.js`](src/data/cpvOvervaagning.js) (48000000, 72000000,
+79400000 — dokumenteret med de 79 underliggende koder, de dækker). Det var
+tidligere en selvstændig side, `NyeUdbudPage`. Den blev lagt ind her, fordi de
+to sider læste samme tabel gennem samme `soeg_udbud()` og viste samme
+`UdbudKort` — forskellen var kun, hvem der valgte CPV-koderne, plus et
+tidsvindue. Et gemt filter sætter begge, og de tre feltknapper blev overflødige,
+fordi CPV-vælgeren i forvejen kan fjerne en kode. Verificeret ved
+sammenligning mod den gamle sides kald: samme antal, samme rækker.
+
+Filtrene gemmes i `localStorage`, så indgangen stadig koster nul valg — det
+var hele pointen i det gamle menupunkt, og det skulle overleve flytningen.
 
 Flowene er koblet sammen: fra en kandidat-leverandør kan man hoppe direkte til
 virksomhedsopslaget for den pågældende virksomhed ([`App.jsx`](src/App.jsx)).
@@ -208,25 +222,30 @@ src/
                format.js — fælles tal-/dato-formattering (delt mellem sider)
   services/    Ét adapter-lag pr. datakilde — returnerer normaliserede objekter,
                så UI'et ikke kender kildernes formater
-  data/        Demo-data (suppliers, cpvOptions) + naceSectionMap (branchekoder → DST-sektor)
+  data/        naceSectionMap (branchekoder → DST-sektor) + cpvOvervaagning
+               (husets CPV-felt, bag Udbudssøgnings gemte filtre)
   context/     ProjectsContext — udbud i localStorage
   components/  layout/Rail+ThemeToggle (app-skallen: fast venstreskinne, som
                under 1040px lægger sig vandret i toppen — samme markup),
                charts/TrendChart (håndtegnet SVG, ingen chart-lib),
                ui/ (SourceBadge, StatusChip, ConfidenceMeter, Loading, Icon —
                små præsentationskomponenter, ingen datahentning)
-  pages/       CompanyLookupPage, TenderPage, TilbudsgiverPage
+  pages/       CompanyLookupPage (leverandør + ordregiver), TenderPage,
+               TilbudsgiverPage, UdbudssoegningPage (inkl. de gemte feltfiltre)
 scripts/
   indlaes-cvr-indeks.mjs     Ugentlig indlæsning af markedsindekset
   indlaes-eu-sanktioner.mjs  Ugentlig indlæsning af sanktionslisten
 supabase/
   functions/   cvr-soeg, cvr-datafordeler, ted, ted-notice, regnskab-search,
-               regnskab-doc, sanktionstjek, marked, marked-vindere + _shared/
+               regnskab-doc, sanktionstjek, marked, marked-vindere, udbud-soeg,
+               ordregiver-soeg, bid-gonogo, bid-questions, bid-answer-draft,
+               cvr + _shared/
   migrations/  Cache-tabeller, markedsindeks og sanktionsliste
 ```
 
 Appen har ingen router og ingen UI-afhængigheder — kun React og Vite. Navigation
-mellem de tre views er `useState` i `App.jsx`.
+mellem de fire views er `useState` i `App.jsx`, gemt i `localStorage` sammen med
+et par flytte-regler for views, der er blevet lagt sammen med et andet.
 
 Designsystemet ligger samlet i [`src/index.css`](src/index.css) som CSS-variabler,
 uden Tailwind eller andet UI-framework. To regler styrer paletten, og de er
@@ -542,7 +561,7 @@ Indekset søges to veje, som deler den samme SQL-funktion `soeg_udbud()`:
 
 | Endepunkt | Svarer på | Brugt af |
 |---|---|---|
-| `udbud-soeg` | Hvilke bekendtgørelser matcher CPV/fritekst/kilde/art — valgfrit for én ordregiver (`ordregiverCvr`) | Udbudssøgning, Nye udbud, ordregiverprofilen |
+| `udbud-soeg` | Hvilke bekendtgørelser matcher CPV/fritekst/kilde/art/tidsvindue — valgfrit for én ordregiver (`ordregiverCvr`) | Udbudssøgning (inkl. de gemte feltfiltre), ordregiverprofilen |
 | `ordregiver-soeg` | Hvilken ordregiver mener du? Ét svar pr. CVR-nummer med antal, ikke pr. navnevariant | Ordregiveropslagets forslagsliste |
 
 Ordregiverfilteret er på CVR og ikke på navn, fordi navnet i kilden er
@@ -632,8 +651,8 @@ hvis den nogensinde lukkes ned.
    eksakt navnematch — se caveat under Datakilder ovenfor.
 3. **TED dækker kun over EU's tærskelværdi.** De fleste danske kontrakter
    ligger under og findes slet ikke i appen. Undtagelsen er
-   udbud.dk-indekset (DKUDBUD), som Udbudssøgning, Nye udbud og
-   ordregiveropslaget bruger.
+   udbud.dk-indekset (DKUDBUD), som Udbudssøgning og ordregiveropslaget
+   bruger.
 4. **Navnematch mod TED har en grænse.** Der er ingen CVR/VAT på vinderen i de
    felter vi henter, så koncernselskaber i andre lande med samme navn kan
    komme med.

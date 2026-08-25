@@ -2,10 +2,14 @@ import Icon from "../ui/Icon";
 import { dageTil, dageSiden, KONTRAKTTYPE } from "../../services/udbudService";
 import { formatDanishDate, formatAmount } from "../../lib/format";
 
-// Ét udbudskort. Delt mellem Udbudssøgning (søg selv) og Nye udbud
-// (fast overvågning), fordi de viser den SAMME række fra samme tabel — kun
+// Ét udbudskort. Delt mellem Udbudssøgning (inkl. de gemte feltfiltre) og
+// ordregiverprofilen, fordi de viser den SAMME række fra samme tabel — kun
 // indgangen til den er forskellig. Lå markupen to steder, ville en rettelse i
 // fristmærket eller CPV-listen kun slå igennem på den ene side.
+//
+// Det var netop den deling, der gjorde det billigt at lægge den gamle
+// overvågningsside ind i Udbudssøgning: kortet var allerede fælles, så kun
+// filtrene skulle flyttes.
 
 function Fristmaerke({ frist }) {
   const dage = dageTil(frist);
@@ -24,9 +28,9 @@ function Fristmaerke({ frist }) {
   );
 }
 
-// Kun på overvågningssiden: dér er alderen på registreringen selve pointen.
-// På søgesiden ville den være støj ved siden af fristen, som er det, man
-// vælger efter.
+// Kun når listen læses på nyhedsaksen (sortering "nyeste"): dér er alderen på
+// registreringen selve pointen. Sorterer man på frist, ville den være støj ved
+// siden af det, man valgte efter.
 function Nymaerke({ registreret }) {
   const dage = dageSiden(registreret);
   if (dage == null) return null;

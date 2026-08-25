@@ -4,19 +4,25 @@ import CompanyLookupPage from "./pages/CompanyLookupPage";
 import TenderPage from "./pages/TenderPage";
 import TilbudsgiverPage from "./pages/TilbudsgiverPage";
 import UdbudssoegningPage from "./pages/UdbudssoegningPage";
-import NyeUdbudPage from "./pages/NyeUdbudPage";
 
 // Hvilket faneblad man stod på er en del af "alt bliver slettet"-oplevelsen
 // ved et refresh — uden dette hopper en refresh altid tilbage til
 // Virksomhedsopslag, selv midt i en Tilbudsgiver-radar-analyse. Samme
 // "markedsanalyse.*"-nøglemønster som ThemeToggle/ProjectsContext.
 const VIEW_STORAGE_KEY = "markedsanalyse.activeView";
-const VALID_VIEWS = ["company", "tenders", "bidder", "udbudssoegning", "nyeudbud"];
+const VALID_VIEWS = ["company", "tenders", "bidder", "udbudssoegning"];
+
+// "nyeudbud" var overvågningens eget flow, indtil den blev lagt ind i
+// Udbudssøgning som et gemt filter. Den, der havde den åben ved sidste
+// besøg, har stadig navnet i localStorage — send dem til den side, der nu
+// gør arbejdet, frem for at smide dem tilbage til forsiden.
+const FLYTTEDE_VIEWS = { nyeudbud: "udbudssoegning" };
 
 function readStoredView() {
   try {
     const stored = localStorage.getItem(VIEW_STORAGE_KEY);
-    return VALID_VIEWS.includes(stored) ? stored : "company";
+    if (VALID_VIEWS.includes(stored)) return stored;
+    return FLYTTEDE_VIEWS[stored] ?? "company";
   } catch {
     return "company";
   }
@@ -61,7 +67,6 @@ export default function App() {
         {activeView === "tenders" && <TenderPage onGoToCompany={goToCompany} />}
         {activeView === "bidder" && <TilbudsgiverPage onGoToCompany={goToCompany} />}
         {activeView === "udbudssoegning" && <UdbudssoegningPage />}
-        {activeView === "nyeudbud" && <NyeUdbudPage />}
       </div>
     </div>
   );

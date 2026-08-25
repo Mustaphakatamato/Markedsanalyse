@@ -1,4 +1,12 @@
-// Den faste CPV-overvågning: hvilke felter "Nye udbud" holder øje med.
+// "Mit felt": de CPV-områder huset kan levere inden for. Definitionen bag de
+// gemte filtre på Udbudssøgning ("Nyt i mit felt" / "Alt i mit felt").
+//
+// Filen hed før overvågningens datafil og havde sin egen side ("Nye udbud i
+// mit felt"). Siden er lagt ind i Udbudssøgning som et gemt filter, fordi de
+// to sider læste samme tabel gennem samme soeg_udbud() og viste samme
+// UdbudKort — forskellen var kun HVEM der valgte CPV-koderne, og et
+// tidsvindue. Feltdefinitionen her overlevede flytningen; UI'et til at slå et
+// felt fra gjorde ikke, fordi CPV-vælgeren i forvejen kan fjerne en kode.
 //
 // HVORFOR DEN STÅR I KODEN OG IKKE I EN INDSTILLING: listen er ikke et filter
 // man skruer på fra gang til gang — den er en beskrivelse af, hvad huset kan
@@ -169,6 +177,22 @@ export const OVERVAAGEDE_FELTER = [
 export const OVERVAAGEDE_KODER = OVERVAAGEDE_FELTER.flatMap((f) => f.koder);
 
 export const KODE_TEKST = new Map(OVERVAAGEDE_KODER.map((k) => [k.kode, k.tekst]));
+
+// Feltet som CPV-vælgeren skal fyldes med, når et gemt filter vælges: KUN de
+// tre bredeste koder. De afgør hele resultatet alene, fordi matchet er
+// hierarkisk (se src/lib/cpv.js), så de 76 øvrige ville bare være 76 chips,
+// der ikke ændrer ét træf. Formen er {kode, tekst}, som CpvVaelger forventer.
+export const MIT_FELT_KODER = OVERVAAGEDE_FELTER.map((f) => ({
+  kode: f.kode,
+  tekst: f.navn
+}));
+
+// Advarslerne pr. bred kode, så UI'et kan vise dem når koden er valgt — og
+// kun da. Nøglen er den brede kode, ikke feltets id, fordi det er koden der
+// står i CPV-vælgeren efter et gemt filter.
+export const ADVARSEL_PR_KODE = new Map(
+  OVERVAAGEDE_FELTER.filter((f) => f.advarsel).map((f) => [f.kode, f.advarsel])
+);
 
 // Vinduerne. 7 dage er standard: en uge fanger det, der er kommet til siden
 // man sidst så efter, også hen over en weekend, uden at listen fyldes med det
