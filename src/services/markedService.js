@@ -63,14 +63,17 @@ const IKKE_UDRULLET =
   "AI-forslaget kan ikke nås — funktionen er måske ikke udrullet på serveren endnu. " +
   "Vælg CPV-koderne manuelt nedenfor.";
 
-export async function foreslaaMarked(behov) {
+export async function foreslaaMarked(behov, { titel = "", anslaaetVaerdi = null } = {}) {
   // En funktion, der ikke er udrullet, svarer ikke på CORS-forespørgslen, og
   // browseren melder det som en netværksfejl ("Failed to fetch") frem for et
   // 404. Begge dele skal kunne skelnes fra en fejl i selve forslaget, for
   // CPV-vælgeren virker stadig.
   let svar;
   try {
-    svar = await postToFunction("/behov-marked", { behov });
+    // Titlen og værdien ligger på udbuddet, ikke i behovet, men de siger
+    // begge noget om markedet: titlen nævner ofte fagområdet som det eneste
+    // sted, og værdien afgør, hvilket niveau i nomenklaturen der passer.
+    svar = await postToFunction("/behov-marked", { behov, titel, anslaaetVaerdi });
   } catch {
     throw new Error(IKKE_UDRULLET);
   }

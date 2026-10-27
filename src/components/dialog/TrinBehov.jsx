@@ -38,14 +38,19 @@ const GRUPPER = [
 // Forslaget gemmes sammen med det behov, det blev lavet ud fra. Ændres
 // behovet bagefter, siger kortet det — ellers ville et gammelt forslag stå og
 // se ud som svaret på den nye beskrivelse.
-function behovNoegle(behov) {
+// Titlen og værdien er med, selv om de ikke ligger i behovet: de sendes til
+// modellen og påvirker forslaget, så et skift i dem gør det gamle forslag
+// forældet på linje med en rettet beskrivelse.
+function behovNoegle(behov, titel = "", anslaaetVaerdi = null) {
   return JSON.stringify([
     behov.hvad,
     behov.formaal,
     behov.geografi,
     behov.varighedAar,
     behov.opdeling,
-    behov.saerligeKrav
+    behov.saerligeKrav,
+    titel,
+    anslaaetVaerdi
   ]);
 }
 
@@ -193,23 +198,24 @@ function AiForslag({ dialog, opdater, behovAendret }) {
         </div>
       )}
 
-      {/* To grunde til at en kode ryger, og de betyder ikke det samme: enten
-          fandtes den slet ikke, eller også fandtes den og handlede om noget
-          andet end modellen troede. Det sidste er det hyppige, så teksten må
-          ikke påstå det første om begge. */}
-      {forslag.kasseredeKoder > 0 && (
+      {/* Kun når der ikke kom nogen koder ud. Modellens egne kodegæt er et
+          mellemtrin nu, hvor de rigtige koder findes ved at lade den VÆLGE
+          blandt opslag i nomenklaturen — at remse fem frasorterede gæt op
+          under et godt svar er støj. Står listen derimod tom, er grunden
+          det eneste, der er at sige. */}
+      {forslag.cpvForslag.length === 0 && forslag.kasseredeKoder > 0 && (
         <p className="muted small">
-          {forslag.kasseredeKoder} kode{forslag.kasseredeKoder === 1 ? "" : "r"} fra modellen er
-          sorteret fra
           {forslag.kasserede?.length
-            ? `: ${forslag.kasserede
+            ? forslag.kasserede
                 .map((k) =>
                   k.grund === "findes-ikke"
                     ? `${k.kode} findes ikke i nomenklaturen`
                     : `${k.kode} er "${k.tabellensBetegnelse}", ikke "${k.modellensBetegnelse}"`
                 )
-                .join("; ")}.`
-            : ", fordi de ikke kunne bekræftes i nomenklaturen."}
+                .join("; ") + "."
+            : `${forslag.kasseredeKoder} kode${
+                forslag.kasseredeKoder === 1 ? "" : "r"
+              } kunne ikke bekræftes mod nomenklaturen.`}
         </p>
       )}
 
@@ -283,8 +289,11 @@ export default function TrinBehov({ dialog, opdater, onVidere }) {
     setAiStatus("henter");
     setAiFejl(null);
     try {
-      const svar = await foreslaaMarked(behov);
-      opdater({ aiForslag: { ...svar, behovNoegle: behovNoegle(behov), lavet: new Date().toISOString() } });
+      const svar = await foreslaaMarked(behov, {
+        titel: dialog.titel,
+        anslaaetVaerdi: dialog.anslaaetVaerdi
+      });
+      opdater({ aiForslag: { ...svar, behovNoegle: behovNoegle(behov, dialog.titel, dialog.anslaaetVaerdi), lavet: new Date().toISOString() } });
       setAiStatus("idle");
     } catch (err) {
       setAiFejl(err.message);
@@ -508,7 +517,10 @@ export default function TrinBehov({ dialog, opdater, onVidere }) {
         <AiForslag
           dialog={dialog}
           opdater={opdater}
-          behovAendret={dialog.aiForslag.behovNoegle !== behovNoegle(behov)}
+          behovAendret={
+            dialog.aiForslag.behovNoegle !==
+            behovNoegle(behov, dialog.titel, dialog.anslaaetVaerdi)
+          }
         />
       )}
 

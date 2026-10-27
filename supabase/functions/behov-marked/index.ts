@@ -105,6 +105,39 @@ Du får ordregiverens behovsbeskrivelse. Svar med:
 
 Opfind ikke oplysninger, der ikke står i behovet. Svar altid på dansk.`;
 
+// Andet trins prompt. Modellen får rigtige koder fra nomenklaturen og skal
+// kun pege. Den må gerne svare tomt: et behov, hvor ingen af kandidaterne
+// passer, skal ikke presses ind i en kode, der er lidt forkert.
+const VAELG_PROMPT = `Du hjælper en dansk offentlig ordregiver med at vælge CPV-koder til et udbud.
+
+Du får behovet og en liste med KANDIDATKODER fra den officielle CPV-nomenklatur.
+
+Vælg de 2-5 koder fra listen, der bedst dækker det, der skal KØBES. Regler:
+- Du må KUN vælge koder, der står i listen. Find aldrig på en kode.
+- Vælg det niveau, markedet typisk byder på — ikke hele hovedgrupper, og ikke en enkelt detalje af en større opgave.
+- Mange kandidater er fundet ved ordsøgning og passer slet ikke til behovet. Dem lader du ligge.
+- Passer ingen af kandidaterne, så svar med en tom liste frem for det nærmeste.
+- Hver valgt kode får en begrundelse på én sætning, der henviser til behovet.
+
+Svar altid på dansk.`;
+
+const VAELG_SCHEMA = {
+  type: "object",
+  properties: {
+    valg: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { kode: { type: "string" }, begrundelse: { type: "string" } },
+        required: ["kode", "begrundelse"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["valg"],
+  additionalProperties: false
+};
+
 const SCHEMA = {
   type: "object",
   properties: {
@@ -140,7 +173,11 @@ const SCHEMA = {
 type Node = Record<string, unknown>;
 
 function tekst(v: unknown): string {
-  return typeof v === "string" ? v.trim().slice(0, MAKS_TEKST) : "";
+  if (typeof v !== "string") return "";
+  // Modellen skriver hård bindestreg (U+2011) i sammensatte ord — "it‑drift",
+  // "backup‑service". Den ligner en bindestreg, men er et andet tegn, og et
+  // søgeord med den i rammer intet i nomenklaturen. Samme for tankestreger.
+  return v.replace(/[\u2010-\u2015]/g, "-").trim().slice(0, MAKS_TEKST);
 }
 
 Deno.serve(async (req) => {
@@ -168,7 +205,18 @@ Deno.serve(async (req) => {
   // sendes ikke med: det ville trække forslaget mod den leverandørs profil
   // frem for mod behovet.
   const beskrivelse = [
+    // Titlen står FØRST, fordi den ofte er det eneste sted, fagområdet er
+    // nævnt. "Driftsleverandør til hel stack" uden titlen "IT infrastruktur"
+    // blev læst som bygningsdrift og gav Drift af losseplads og Anlæg af
+    // kloakker (konstateret 2026-10-27). Ordregiveren skriver fagområdet i
+    // titlen og gentager det sjældent i beskrivelsen.
+    tekst(krop.titel) && `Udbuddets titel: ${tekst(krop.titel)}`,
     `Hvad skal anskaffes: ${hvad}`,
+    // Størrelsesordenen afgør, hvilket niveau i nomenklaturen der er det
+    // rigtige: en aftale til 600 mio. over otte år er en hel driftsstak, ikke
+    // en enkeltydelse.
+    Number(krop.anslaaetVaerdi) > 0 &&
+      `Anslået samlet kontraktværdi: ${Math.round(Number(krop.anslaaetVaerdi))} DKK`,
     tekst(behov.formaal) && `Formål: ${tekst(behov.formaal)}`,
     tekst(behov.geografi) && `Leveringssted: ${tekst(behov.geografi)}`,
     behov.varighedAar && `Kontraktens varighed: ${Number(behov.varighedAar)} år`,
@@ -277,13 +325,26 @@ Deno.serve(async (req) => {
     cpvForslag.push({ kode: f.kode, tekst: tabellens, begrundelse: f.begrundelse });
   }
 
-  // ------------------------------------------------ søgeord → rigtige koder
-  const soegeord = [...new Set((forslag.soegeord ?? []).map((o) => tekst(o)).filter((o) => o.length >= 3))]
-    .slice(0, 6);
+  // ------------------------------------------------ byg kandidatpuljen
+  // Modellens KODER er upålidelige, men dens BETEGNELSER er som regel rigtige:
+  // den kaldte 90730000 for "Rengøring af offentlige bygninger" og 30213100
+  // for "Servere" — forkerte koder, men præcise beskrivelser af det søgte.
+  // Derfor søges der på betegnelserne ved siden af søgeordene. Puljen må gerne
+  // indeholde skrald; den bliver sorteret af modellen i andet trin.
+  const soegetekster = [
+    ...new Set(
+      [
+        ...(forslag.soegeord ?? []).map((o) => tekst(o)),
+        ...foreslaaede.map((f) => f.modellensBetegnelse)
+      ]
+        .map((o) => o.trim())
+        .filter((o) => o.length >= 3)
+    )
+  ].slice(0, 12);
 
   const traf = await Promise.all(
-    soegeord.map(async (ord) => {
-      const { data } = await supabase.rpc("soeg_cpv", { soegetekst: ord, maks: 4 });
+    soegetekster.map(async (ord) => {
+      const { data } = await supabase.rpc("soeg_cpv", { soegetekst: ord, maks: 6 });
       return ((data ?? []) as Node[]).map((r) => ({
         kode: String(r.kode),
         tekst: String(r.tekst),
@@ -292,13 +353,58 @@ Deno.serve(async (req) => {
     })
   );
 
-  const flereMuligheder = traf
-    .flat()
-    .filter((t) => !set.has(t.kode) && set.add(t.kode))
-    .slice(0, 12);
+  const pulje = traf.flat().filter((t) => !set.has(t.kode) && set.add(t.kode)).slice(0, 40);
+
+  // ------------------------------------------------ trin 2: modellen VÆLGER
+  // Hele grunden til at dette trin findes: en sprogmodel kan ikke huske
+  // ottecifrede koder, men den kan godt pege på de rigtige blandt en liste.
+  // Her kan den per konstruktion ikke ramme forbi — den må kun svare med
+  // koder, der står i puljen, og det efterprøves.
+  const valgte: { kode: string; tekst: string; begrundelse: string }[] = [];
+  if (pulje.length) {
+    const puljetekst = pulje.map((k) => `${k.kode} ${k.tekst}`).join("\n");
+    const valg = await callGroqStructured({
+      model: MODEL,
+      messages: [
+        { role: "system", content: VAELG_PROMPT },
+        { role: "user", content: `BEHOVET:\n${beskrivelse}\n\nKANDIDATKODER:\n${puljetekst}` }
+      ],
+      responseFormat: { name: "kodevalg", schema: VAELG_SCHEMA },
+      reasoningEffort: "low",
+      maxTokens: 4096
+    });
+
+    if (valg.ok) {
+      try {
+        const svar = JSON.parse(valg.content) as { valg: { kode: string; begrundelse: string }[] };
+        const iPuljen = new Map(pulje.map((k) => [k.kode, k.tekst]));
+        const set2 = new Set<string>();
+        for (const v of svar.valg ?? []) {
+          const kode = String(v.kode).split("-")[0].trim();
+          const tabellens = iPuljen.get(kode);
+          // Finder modellen på en kode, der ikke stod i puljen, ryger den —
+          // så er vi tilbage ved at den husker frem for at vælge.
+          if (!tabellens || set2.has(kode)) continue;
+          set2.add(kode);
+          valgte.push({ kode, tekst: tabellens, begrundelse: tekst(v.begrundelse) });
+        }
+      } catch {
+        // Et ufortolkeligt valg skal ikke vælte forslaget: puljen står
+        // stadig som søgeforslag, og ordregiveren kan vælge selv.
+      }
+    }
+  }
+
+  // Trin 2's valg står forrest. Modellens egne koder, der overlevede
+  // betegnelsestjekket, lægges efter — de er efterprøvet, bare ikke udvalgt.
+  const valgteSet = new Set(valgte.map((v) => v.kode));
+  const samletForslag = [...valgte, ...cpvForslag.filter((f) => !valgteSet.has(f.kode))].slice(0, 6);
+
+  const iForslag = new Set(samletForslag.map((f) => f.kode));
+  const flereMuligheder = pulje.filter((k) => !iForslag.has(k.kode)).slice(0, 12);
 
   return json({
-    cpvForslag,
+    cpvForslag: samletForslag,
     flereMuligheder,
     // Hvor mange af modellens egne koder der blev sorteret fra. Står i UI'et,
     // så ordregiveren kan se, at listen er filtreret — ikke bare kortere.
