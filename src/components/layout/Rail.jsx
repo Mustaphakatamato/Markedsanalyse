@@ -1,4 +1,5 @@
 import ThemeToggle from "./ThemeToggle";
+import BrandMark from "./BrandMark";
 import Icon from "../ui/Icon";
 
 // Appens skal er en fast venstreskinne, ikke en topbar. Tre grunde:
@@ -26,27 +27,6 @@ const NAV_ITEMS = [
   { id: "udbudssoegning", label: "Udbudssøgning", icon: "search" }
 ];
 
-// Monogram i stedet for et logo vi ikke har: fire datapunkter og en linje —
-// samme figur som grafen på virksomhedsopslaget.
-function BrandMark() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-      <path
-        d="M2.5 12.4L6.2 8.1l3 2.6 5.3-6"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="14.5" cy="4.7" r="1.9" fill="currentColor" />
-    </svg>
-  );
-}
-
-// `flows` er listen over tændte flows fra App. Skinnen filtrerer NAV_ITEMS
-// efter den i stedet for selv at have en mening om, hvad der er slukket —
-// så står tænd/sluk-knappen ét sted (AKTIVE_FLOWS i App.jsx), og
-// rækkefølgen her i filen bestemmer stadig, hvordan punkterne står.
 export default function Rail({ flows, activeView, onChangeView }) {
   const synligeFlows = flows ? NAV_ITEMS.filter((item) => flows.includes(item.id)) : NAV_ITEMS;
   return (

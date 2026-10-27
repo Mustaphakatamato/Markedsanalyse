@@ -517,6 +517,44 @@ hr {
   align-items: start;
 }
 
+/* Skallen uden skinne: ét flow, ingen navigation, hele bredden til
+   tabeller og grafer. Topbjælken bærer det, skinnen havde ud over
+   navigationen — mærket, farvenøglen og temavalget. */
+.app-shell--flad {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--s5);
+  padding: var(--s3) var(--s7);
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Mærket skubber resten til højre, så farvenøgle og temavalg står samlet
+   i den modsatte ende frem for at flyde midt i bjælken. */
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+  margin-right: auto;
+}
+
+.topbar__note {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
 /* Skinnen. Ét sted der altid svarer på "hvor er jeg, og hvad kan jeg ellers".
    Den er sticky i fuld højde, så den aldrig ruller væk midt i en analyse. */
 .rail {
@@ -2208,6 +2246,20 @@ select:focus {
     display: block;
   }
 
+  /* Farvenøglen er for lang til at dele linje med mærket på en telefon.
+     Den får sin egen linje under i stedet for at blive skjult — uden den
+     kan man ikke se, hvad der er live data og hvad der er demo. */
+  .topbar {
+    flex-wrap: wrap;
+    padding: var(--s3) var(--s4);
+    gap: var(--s3) var(--s4);
+  }
+
+  .topbar__note {
+    order: 3;
+    width: 100%;
+  }
+
   .rail {
     position: sticky;
     top: 0;
@@ -3096,6 +3148,7 @@ html {
   .console::after,
   .ai-panel::before,
   .rail,
+  .topbar,
   .btn,
   .seg,
   .icon-button {

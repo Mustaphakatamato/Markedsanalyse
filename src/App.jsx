@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Rail from "./components/layout/Rail";
+import Topbar from "./components/layout/Topbar";
 import CompanyLookupPage from "./pages/CompanyLookupPage";
 import TenderPage from "./pages/TenderPage";
 import TilbudsgiverPage from "./pages/TilbudsgiverPage";
@@ -67,9 +68,18 @@ export default function App() {
       }
     : undefined;
 
+  // Med ét flow er der intet at navigere imellem, og en hel kolonne til en
+  // enkelt knap er spildt bredde. Så bliver skallen én kolonne med en lav
+  // topbjælke; kommer der flere flows, er skinnen der igen af sig selv.
+  const énSide = AKTIVE_FLOWS.length === 1;
+
   return (
-    <div className="app-shell">
-      <Rail flows={AKTIVE_FLOWS} activeView={activeView} onChangeView={setActiveView} />
+    <div className={énSide ? "app-shell app-shell--flad" : "app-shell"}>
+      {énSide ? (
+        <Topbar />
+      ) : (
+        <Rail flows={AKTIVE_FLOWS} activeView={activeView} onChangeView={setActiveView} />
+      )}
 
       {/* key på arbejdsområdet: React river træet ned og bygger det op igen
           ved hvert flow-skift, så sidens indgangsanimation (.page > *)
