@@ -5,12 +5,18 @@ import TenderPage from "./pages/TenderPage";
 import TilbudsgiverPage from "./pages/TilbudsgiverPage";
 import UdbudssoegningPage from "./pages/UdbudssoegningPage";
 
+// Appen er skåret ned til ét flow: markedsanalysen. De tre andre sider ligger
+// urørt i src/pages og tændes igen ved at føje deres id til listen herunder —
+// det er det eneste sted, der skal rettes. Rækkefølgen styrer også skinnen,
+// og det første id er den side, man lander på.
+const AKTIVE_FLOWS = ["tenders"];
+const STANDARD_VIEW = AKTIVE_FLOWS[0];
+
 // Hvilket faneblad man stod på er en del af "alt bliver slettet"-oplevelsen
 // ved et refresh — uden dette hopper en refresh altid tilbage til
-// Virksomhedsopslag, selv midt i en Tilbudsgiver-radar-analyse. Samme
-// "markedsanalyse.*"-nøglemønster som ThemeToggle/ProjectsContext.
+// standardsiden, selv midt i en analyse. Samme "markedsanalyse.*"-nøglemønster
+// som ThemeToggle/ProjectsContext.
 const VIEW_STORAGE_KEY = "markedsanalyse.activeView";
-const VALID_VIEWS = ["company", "tenders", "bidder", "udbudssoegning"];
 
 // "nyeudbud" var overvågningens eget flow, indtil den blev lagt ind i
 // Udbudssøgning som et gemt filter. Den, der havde den åben ved sidste
@@ -18,13 +24,17 @@ const VALID_VIEWS = ["company", "tenders", "bidder", "udbudssoegning"];
 // gør arbejdet, frem for at smide dem tilbage til forsiden.
 const FLYTTEDE_VIEWS = { nyeudbud: "udbudssoegning" };
 
+// En gemt visning fra dengang flere flows var tændt må ikke kunne vække en
+// slukket side: alt der ikke står i AKTIVE_FLOWS falder tilbage til standard.
 function readStoredView() {
   try {
     const stored = localStorage.getItem(VIEW_STORAGE_KEY);
-    if (VALID_VIEWS.includes(stored)) return stored;
-    return FLYTTEDE_VIEWS[stored] ?? "company";
+    if (AKTIVE_FLOWS.includes(stored)) return stored;
+    const flyttet = FLYTTEDE_VIEWS[stored];
+    if (AKTIVE_FLOWS.includes(flyttet)) return flyttet;
+    return STANDARD_VIEW;
   } catch {
-    return "company";
+    return STANDARD_VIEW;
   }
 }
 
@@ -45,15 +55,21 @@ export default function App() {
   const [companyQuery, setCompanyQuery] = useState("");
   const [companyQueryToken, setCompanyQueryToken] = useState(0);
 
-  const goToCompany = (name) => {
-    setCompanyQuery(name);
-    setCompanyQueryToken((token) => token + 1);
-    setActiveView("company");
-  };
+  // Er virksomhedsopslaget slukket, sendes hoppet slet ikke med ned. Så ved
+  // kandidatlisterne, at navnet skal stå som tekst frem for som en knap, der
+  // ville lande brugeren på en side uden menupunkt at komme tilbage fra.
+  const companyFlowAktivt = AKTIVE_FLOWS.includes("company");
+  const goToCompany = companyFlowAktivt
+    ? (name) => {
+        setCompanyQuery(name);
+        setCompanyQueryToken((token) => token + 1);
+        setActiveView("company");
+      }
+    : undefined;
 
   return (
     <div className="app-shell">
-      <Rail activeView={activeView} onChangeView={setActiveView} />
+      <Rail flows={AKTIVE_FLOWS} activeView={activeView} onChangeView={setActiveView} />
 
       {/* key på arbejdsområdet: React river træet ned og bygger det op igen
           ved hvert flow-skift, så sidens indgangsanimation (.page > *)

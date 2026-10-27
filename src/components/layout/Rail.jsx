@@ -43,7 +43,12 @@ function BrandMark() {
   );
 }
 
-export default function Rail({ activeView, onChangeView }) {
+// `flows` er listen over tændte flows fra App. Skinnen filtrerer NAV_ITEMS
+// efter den i stedet for selv at have en mening om, hvad der er slukket —
+// så står tænd/sluk-knappen ét sted (AKTIVE_FLOWS i App.jsx), og
+// rækkefølgen her i filen bestemmer stadig, hvordan punkterne står.
+export default function Rail({ flows, activeView, onChangeView }) {
+  const synligeFlows = flows ? NAV_ITEMS.filter((item) => flows.includes(item.id)) : NAV_ITEMS;
   return (
     <aside className="rail">
       <div className="rail__brand">
@@ -57,8 +62,11 @@ export default function Rail({ activeView, onChangeView }) {
       </div>
 
       <nav className="rail__nav" aria-label="Hovednavigation">
-        <p className="rail__label">Flows</p>
-        {NAV_ITEMS.map((item) => (
+        {/* Med kun ét flow tilbage er overskriften "Flows" støj over en
+            enkelt knap — den kommer igen af sig selv, når der er mere end
+            én side at vælge imellem. */}
+        {synligeFlows.length > 1 && <p className="rail__label">Flows</p>}
+        {synligeFlows.map((item) => (
           <button
             key={item.id}
             type="button"

@@ -315,15 +315,22 @@ export default function Kandidatliste({
 
               <div className="kandidat__krop">
                 <div className="kandidat__top">
-                  <button
-                    type="button"
-                    className="kandidat__navn"
-                    onClick={() => onGoToCompany(v.navn)}
-                    title="Åbn fuld virksomhedsprofil"
-                  >
-                    {v.navn}
-                    <Icon name="arrow" size={12} />
-                  </button>
+                  {/* Uden onGoToCompany er virksomhedsopslaget slukket, og
+                      navnet skal stå som ren tekst — en knap ville føre til
+                      en side, der ikke er noget menupunkt tilbage fra. */}
+                  {onGoToCompany ? (
+                    <button
+                      type="button"
+                      className="kandidat__navn"
+                      onClick={() => onGoToCompany(v.navn)}
+                      title="Åbn fuld virksomhedsprofil"
+                    >
+                      {v.navn}
+                      <Icon name="arrow" size={12} />
+                    </button>
+                  ) : (
+                    <span className="kandidat__navn kandidat__navn--flad">{v.navn}</span>
+                  )}
                   <Stoerrelsesmaerke
                     klasse={v.stoerrelsesklasse}
                     antalPenheder={v.antalPenheder}

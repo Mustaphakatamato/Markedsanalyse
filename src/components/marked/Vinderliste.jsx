@@ -192,7 +192,7 @@ export default function Vinderliste({
 
                   <div className="kandidat__krop">
                     <div className="kandidat__top">
-                      {v.cvr ? (
+                      {v.cvr && onGoToCompany ? (
                         <button
                           type="button"
                           className="kandidat__navn"
@@ -203,7 +203,12 @@ export default function Vinderliste({
                           <Icon name="arrow" size={12} />
                         </button>
                       ) : (
-                        <span className="kandidat__navn kandidat__navn--flad">{v.navn}</span>
+                        /* Grenen fanger nu to tilfælde: ingen CVR (og dermed
+                           intet cvrNavn), eller virksomhedsopslaget slukket —
+                           i det sidste er CVR-navnet stadig det pæneste. */
+                        <span className="kandidat__navn kandidat__navn--flad">
+                          {v.cvrNavn || v.navn}
+                        </span>
                       )}
 
                       <span className="pill pill-ok" title="Vundne kontrakter i CPV-feltet">
