@@ -175,9 +175,13 @@ function AiForslag({ dialog, opdater, behovAendret }) {
           })}
         </ul>
       ) : (
+        /* Tom liste er ikke en fejl her, men det hyppige udfald: modellen
+           husker CPV-koder dårligt, og betegnelsestjekket sorterer dem fra.
+           Teksten skal sige hvorfor, så det ikke ligner at noget er i
+           stykker — og pege videre med det samme. */
         <p className="muted small">
-          Ingen af modellens kodeforslag fandtes i nomenklaturen. Brug søgeforslagene
-          herunder eller CPV-vælgeren.
+          Ingen af modellens kodeforslag kunne bekræftes mod nomenklaturen. Vælg blandt
+          søgeforslagene herunder eller i CPV-vælgeren.
         </p>
       )}
 
@@ -189,10 +193,23 @@ function AiForslag({ dialog, opdater, behovAendret }) {
         </div>
       )}
 
+      {/* To grunde til at en kode ryger, og de betyder ikke det samme: enten
+          fandtes den slet ikke, eller også fandtes den og handlede om noget
+          andet end modellen troede. Det sidste er det hyppige, så teksten må
+          ikke påstå det første om begge. */}
       {forslag.kasseredeKoder > 0 && (
         <p className="muted small">
-          {forslag.kasseredeKoder} kode{forslag.kasseredeKoder === 1 ? "" : "r"} fra modellen fandtes
-          ikke i nomenklaturen og er sorteret fra.
+          {forslag.kasseredeKoder} kode{forslag.kasseredeKoder === 1 ? "" : "r"} fra modellen er
+          sorteret fra
+          {forslag.kasserede?.length
+            ? `: ${forslag.kasserede
+                .map((k) =>
+                  k.grund === "findes-ikke"
+                    ? `${k.kode} findes ikke i nomenklaturen`
+                    : `${k.kode} er "${k.tabellensBetegnelse}", ikke "${k.modellensBetegnelse}"`
+                )
+                .join("; ")}.`
+            : ", fordi de ikke kunne bekræftes i nomenklaturen."}
         </p>
       )}
 

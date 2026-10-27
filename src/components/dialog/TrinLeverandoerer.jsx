@@ -24,7 +24,17 @@ import { formatDkkMio, formatPercent, formatDanishDate, formatAmount } from "../
 // "sandsynlige tilbudsgivere": dem hentes der nøgletal for automatisk, og dem
 // regner kravsimulatoren i trin 4 på.
 
-const PERIODER = [3, 5, 10];
+// TED fik først strukturerede vinderfelter ved eForms-skiftet i oktober
+// 2023, og marked-vindere læser netop de felter. Ældste tildeling, der
+// overhovedet kan tælles, er 2023-12-21 (målt 2026-10-27 på CPV 90910000).
+// Derfor gav 3, 5 og 10 år NØJAGTIG samme tal — 152 vindere, største med 61
+// kontrakter — selv om 10 år hentede 932 bekendtgørelser mod 3 års 263. Tre
+// knapper, hvor de to var uden virkning, og en etiket der lovede ti års
+// historik.
+//
+// 1, 2 og 3 år giver derimod hver sit svar (102 / 138 / 152 vindere), så det
+// er den spændvidde, der er data til.
+const PERIODER = [1, 2, 3];
 const SIDESTOERRELSE = 25;
 
 const MAERKE_FORKLARING = {

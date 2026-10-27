@@ -53,7 +53,7 @@ function migrerTilV3(v2) {
     // er titlen det bedste bud. Felterne beholdes, så intet forsvinder.
     behov: nytBehov({ hvad: v2.beskrivelse || v2.titel || "" }),
     aiForslag: null,
-    periodeAar: 5,
+    periodeAar: STANDARD_PERIODE_AAR,
     oekonomikrav: { ...STANDARD_OEKONOMIKRAV },
     regnskaber: {},
     // Et udbud med valgte brancher har allerede et marked — åbn der.
@@ -61,11 +61,28 @@ function migrerTilV3(v2) {
   };
 }
 
+// Knapperne hed 3, 5 og 10 år, indtil det viste sig, at TED ikke har
+// vinderdata længere tilbage end slutningen af 2023 — de to øverste gav
+// samme tal som 3 (se PERIODER i TrinLeverandoerer). Et udbud, der blev gemt
+// dengang, står med 5 og ville møde en række knapper, hvor ingen er aktiv.
+//
+// Ingen versionsbump til det: periodeAar er en indstilling på en kontrol,
+// ikke data, der kan gå tabt, og klampningen er idempotent — den kan køre på
+// hvert indlæst udbud uden at ændre noget anden gang.
+const STANDARD_PERIODE_AAR = 3;
+
+function klampPeriode(u) {
+  if (!u || typeof u !== "object") return u;
+  const aar = Number(u.periodeAar);
+  if (Number.isFinite(aar) && aar >= 1 && aar <= STANDARD_PERIODE_AAR) return u;
+  return { ...u, periodeAar: STANDARD_PERIODE_AAR };
+}
+
 function migrer(gemt) {
   if (!gemt || typeof gemt !== "object") return null;
-  if (gemt.skemaVersion === SKEMA_VERSION) return gemt;
+  if (gemt.skemaVersion === SKEMA_VERSION) return klampPeriode(gemt);
   const v2 = gemt.skemaVersion === 2 ? gemt : migrerTilV2(gemt);
-  return v2 ? migrerTilV3(v2) : null;
+  return v2 ? klampPeriode(migrerTilV3(v2)) : null;
 }
 
 // Version 1 havde én CPV-kode som streng og anslået værdi som FRITEKST
@@ -152,7 +169,7 @@ export function ProjectsProvider({ children }) {
       noter: "",
       behov: nytBehov(felter.behov),
       aiForslag: null,
-      periodeAar: 5,
+      periodeAar: STANDARD_PERIODE_AAR,
       oekonomikrav: { ...STANDARD_OEKONOMIKRAV },
       regnskaber: {},
       trin: "behov",

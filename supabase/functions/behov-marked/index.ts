@@ -35,12 +35,70 @@ const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceKey, {
 });
 
 const ER_CPV = /^\d{8}$/;
+
+// ---------------------------------------------------------------------------
+// BETEGNELSESTJEKKET. At slå koden op i cpv_koder fanger kun opdigtede koder.
+// Det fangede ikke det, der faktisk sker: modellen rammer forbi på en kode,
+// der TILFÆLDIGVIS findes og betyder noget helt andet. Målt 2026-10-27 gav
+// "rengøring af skoler" koderne 90420000 (Behandling af spildevand) og
+// 90410000 (Bortskaffelse af spildevand), og en IT-driftsaftale gav 33110000
+// (Udstyr til billeddannelse til medicinsk, dental og veterinær brug) — alle
+// tre findes, alle tre er forkerte, og kasseredeKoder stod på 0.
+//
+// Derfor skriver modellen nu selv, hvilken betegnelse den TROR koden har.
+// Handler den om noget andet end tabellens, kendte modellen ikke koden, og
+// den ryger. Tabellens betegnelse er fortsat den eneste, der vises.
+//
+// Tjekket skal hellere kassere en rigtig kode end slippe en forkert igennem:
+// en forkert CPV-kode står synligt galt i udbudsmaterialet, mens en kode, der
+// mangler, stadig kan findes via søgeordene og CpvVaelger.
+
+// Ord, der går igen i snesevis af CPV-betegnelser. Et sammenfald på dem alene
+// viser ingenting — "udstyr" matcher både kontorudstyr og scannere til
+// hospitaler, og var præcis det, der ville have reddet 33110000.
+// Noteret som de AFKORTEDE former, fordi afkortningen sker først: ellers
+// slipper "tjenesteydelser" forbi en liste, der kun kender "tjenester", og
+// giver så match med enhver anden betegnelse, der også begynder med
+// "tjeneste" — fx affald mod spildevand.
+const GENERISKE_STAMMER = new Set([
+  "udstyr", "tjenes", "ydelse", "servic", "virkso", "produk", "materi",
+  "divers", "andre", "øvrige", "forbin", "arbejd", "anlæg", "system",
+  "løsnin", "brug", "dele", "tilbeh", "appara", "artikl", "varer", "typer",
+  "vedrør", "forske", "almind", "specie", "tilhør"
+]);
+
+// Afkortning til seks tegn frem for rigtig stammereduktion: det dækker
+// bøjninger som rengøring/rengørings og bygning/bygninger, uden at skulle
+// have en dansk ordliste med ind i funktionen.
+function betydendeOrd(tekstvaerdi: string): Set<string> {
+  return new Set(
+    tekstvaerdi
+      .toLowerCase()
+      .replace(/[^a-zæøåäöüé0-9]+/g, " ")
+      .split(" ")
+      .map((o) => o.slice(0, 6))
+      .filter((o) => o.length >= 4 && !GENERISKE_STAMMER.has(o))
+  );
+}
+
+// Ét betydende ord til fælles er nok. Tærsklen er bevidst lav: modellen
+// formulerer sig sjældent ordret som nomenklaturen, og målet er at fange de
+// grove forbiere, ikke at kræve et ordret citat.
+function betegnelsenPasser(modellens: string, tabellens: string): boolean {
+  const a = betydendeOrd(modellens);
+  if (!a.size) return false;
+  const b = betydendeOrd(tabellens);
+  for (const ord of a) if (b.has(ord)) return true;
+  return false;
+}
 const MAKS_TEKST = 4000;
 
 const SYSTEM_PROMPT = `Du hjælper en dansk offentlig ordregiver med at afgrænse leverandørmarkedet før et udbud.
 
 Du får ordregiverens behovsbeskrivelse. Svar med:
-- cpvForslag: 2-5 CPV-koder (otte cifre, uden kontrolciffer) der dækker det, der skal KØBES. Foretræk koder på det niveau, hvor markedet typisk byder — ikke for bredt (hele hovedgrupper) og ikke for smalt. Hver kode får en begrundelse på én sætning, der henviser til behovet.
+- cpvForslag: 2-5 CPV-koder (otte cifre, uden kontrolciffer) der dækker det, der skal KØBES. Foretræk koder på det niveau, hvor markedet typisk byder — ikke for bredt (hele hovedgrupper) og ikke for smalt. Hver kode får:
+  - betegnelse: den officielle danske betegnelse, du mener koden har i CPV-nomenklaturen. Skriv den, som du tror den står der — ikke en omskrivning og ikke en beskrivelse af behovet. Den bliver holdt op mod nomenklaturen, og koden sorteres fra, hvis de to ikke handler om det samme. Er du i tvivl om en kodes betegnelse, så lad være med at foreslå koden.
+  - begrundelse: én sætning, der henviser til behovet.
 - soegeord: 3-6 korte danske søgeord, sådan som de står i CPV-nomenklaturens betegnelser (fx "rengøring", "vinduespudsning", "kantinedrift").
 - afgraensning.omfatter og afgraensning.omfatterIkke: hver 1-4 korte punkter om hvad markedet dækker, og hvad der ligger tæt på men uden for.
 - opdelingsforslag: én eller to sætninger om opgaven naturligt kan deles i delkontrakter (geografisk, fagligt eller efter størrelse) — eller en tom streng, hvis behovet ikke giver grundlag for at sige noget.
@@ -54,8 +112,12 @@ const SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: { kode: { type: "string" }, begrundelse: { type: "string" } },
-        required: ["kode", "begrundelse"],
+        properties: {
+          kode: { type: "string" },
+          betegnelse: { type: "string" },
+          begrundelse: { type: "string" }
+        },
+        required: ["kode", "betegnelse", "begrundelse"],
         additionalProperties: false
       }
     },
@@ -144,7 +206,7 @@ Deno.serve(async (req) => {
   }
 
   let forslag: {
-    cpvForslag: { kode: string; begrundelse: string }[];
+    cpvForslag: { kode: string; betegnelse: string; begrundelse: string }[];
     soegeord: string[];
     afgraensning: { omfatter: string[]; omfatterIkke: string[] };
     opdelingsforslag: string;
@@ -158,7 +220,11 @@ Deno.serve(async (req) => {
   // ------------------------------------------------ valider koderne
   // "72222300-0" afkortes ved bindestregen, ligesom i marked-vindere.
   const foreslaaede = (forslag.cpvForslag ?? [])
-    .map((f) => ({ kode: String(f.kode).split("-")[0].trim(), begrundelse: tekst(f.begrundelse) }))
+    .map((f) => ({
+      kode: String(f.kode).split("-")[0].trim(),
+      modellensBetegnelse: tekst(f.betegnelse),
+      begrundelse: tekst(f.begrundelse)
+    }))
     .filter((f) => ER_CPV.test(f.kode))
     .slice(0, 8);
 
@@ -173,9 +239,43 @@ Deno.serve(async (req) => {
 
   const betegnelse = new Map((fundne ?? []).map((r: Node) => [String(r.kode), String(r.tekst)]));
   const set = new Set<string>();
-  const cpvForslag = foreslaaede
-    .filter((f) => betegnelse.has(f.kode) && !set.has(f.kode) && set.add(f.kode))
-    .map((f) => ({ kode: f.kode, tekst: betegnelse.get(f.kode)!, begrundelse: f.begrundelse }));
+  const cpvForslag: { kode: string; tekst: string; begrundelse: string }[] = [];
+  const kasserede: {
+    kode: string;
+    grund: "findes-ikke" | "betegnelse-passer-ikke";
+    modellensBetegnelse: string;
+    tabellensBetegnelse: string | null;
+  }[] = [];
+
+  for (const f of foreslaaede) {
+    if (set.has(f.kode)) continue;
+    set.add(f.kode);
+
+    const tabellens = betegnelse.get(f.kode) ?? null;
+    if (tabellens == null) {
+      kasserede.push({
+        kode: f.kode,
+        grund: "findes-ikke",
+        modellensBetegnelse: f.modellensBetegnelse,
+        tabellensBetegnelse: null
+      });
+      continue;
+    }
+
+    if (!betegnelsenPasser(f.modellensBetegnelse, tabellens)) {
+      kasserede.push({
+        kode: f.kode,
+        grund: "betegnelse-passer-ikke",
+        modellensBetegnelse: f.modellensBetegnelse,
+        tabellensBetegnelse: tabellens
+      });
+      continue;
+    }
+
+    // Betegnelsen kommer fra tabellen, aldrig fra modellen — modellens egen
+    // har gjort sit arbejde nu, hvor den er brugt til at efterprøve koden.
+    cpvForslag.push({ kode: f.kode, tekst: tabellens, begrundelse: f.begrundelse });
+  }
 
   // ------------------------------------------------ søgeord → rigtige koder
   const soegeord = [...new Set((forslag.soegeord ?? []).map((o) => tekst(o)).filter((o) => o.length >= 3))]
@@ -200,9 +300,12 @@ Deno.serve(async (req) => {
   return json({
     cpvForslag,
     flereMuligheder,
-    // Hvor mange af modellens egne koder der ikke fandtes. Står i UI'et, så
-    // ordregiveren kan se, at listen er filtreret — ikke bare kortere.
-    kasseredeKoder: Math.max((forslag.cpvForslag?.length ?? 0) - cpvForslag.length, 0),
+    // Hvor mange af modellens egne koder der blev sorteret fra. Står i UI'et,
+    // så ordregiveren kan se, at listen er filtreret — ikke bare kortere.
+    // Tallet beholdes som tal af hensyn til UI'et; kasserede har detaljerne,
+    // så en forkert sortering kan ses frem for at skulle gættes.
+    kasseredeKoder: kasserede.length,
+    kasserede,
     afgraensning: {
       omfatter: (forslag.afgraensning?.omfatter ?? []).map(tekst).filter(Boolean).slice(0, 4),
       omfatterIkke: (forslag.afgraensning?.omfatterIkke ?? []).map(tekst).filter(Boolean).slice(0, 4)

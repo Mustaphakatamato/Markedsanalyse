@@ -77,8 +77,17 @@ Deno.serve(async (req) => {
       { role: "user", content: userMessage }
     ],
     responseFormat: { name: "go_no_go_vurdering", schema: SCHEMA },
+    // Tænke-tokenne tæller MED i max_completion_tokens på GPT-OSS. Et lavt
+    // loft rammer derfor ikke et langt svar, men et langt tankeforløb, og
+    // Groq svarer 400 "max completion tokens reached before generating a
+    // valid document" — se behov-marked, hvor det skete i praksis
+    // 2026-10-27. Loftet er hævet frem for at skrue ned for ræsonneringen,
+    // så svarets kvalitet er uændret.
+    // Høj ræsonnering er et bevidst valg her — en go/no-go-vurdering er
+    // netop den slags, der skal tænkes igennem — og den bruger desto flere
+    // tokens, før svaret begynder. Derfor det højeste loft af de fire.
     reasoningEffort: "high",
-    maxTokens: 1500
+    maxTokens: 6000
   });
 
   if (!result.ok) {

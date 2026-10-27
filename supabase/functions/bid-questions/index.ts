@@ -63,7 +63,13 @@ Deno.serve(async (req) => {
       { role: "user", content: JSON.stringify(body.requirements, null, 2) }
     ],
     responseFormat: { name: "afklarende_spoergsmaal", schema: SCHEMA },
-    maxTokens: 1200
+    // Tænke-tokenne tæller MED i max_completion_tokens på GPT-OSS. Et lavt
+    // loft rammer derfor ikke et langt svar, men et langt tankeforløb, og
+    // Groq svarer 400 "max completion tokens reached before generating a
+    // valid document" — se behov-marked, hvor det skete i praksis
+    // 2026-10-27. Loftet er hævet frem for at skrue ned for ræsonneringen,
+    // så svarets kvalitet er uændret.
+    maxTokens: 4096
   });
 
   if (!result.ok) {
