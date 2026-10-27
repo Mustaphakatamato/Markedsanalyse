@@ -13,13 +13,19 @@
       dekorative farver ville udvande netop det signal). Identitet bæres af
       initialerne + navnet; farven bærer tillidsniveauet.
 
-   2) VIOLET ER MASKINEN. Husets accentfarve (--brand) bruges kun ét sted
+   2) RED POPPY ER MASKINEN. Devoteams accentfarve (--brand) bruges kun ét sted
       begrebsmæssigt: hvor systemet selv gør noget — appens eget mærke,
       aktiv navigation, fokusring, primær handling, "arbejder nu"-tilstande
       og AI-genereret indhold. Den er valgt netop fordi den ligger langt fra
       grøn/gul/rød og derfor aldrig kan forveksles med et datakvalitets-
       signal. Blå (--info) er tilbage til to ting: neutrale informations-
       chips og grafens dataserie.
+
+      Paletten er Devoteams: Montserrat, mørkegrå #3c3c3a som tekst (aldrig
+      sort) og Red Poppy #f8485e som accent. Som tekst og knapflade bruges en
+      dybere poppy (#d92b45, 4,8:1 mod hvid), fordi #f8485e kun når 3,5:1.
+      "Kræver afklaring" er flyttet til en dyb bordeaux (#8a1530), så den
+      ikke kan forveksles med poppy. Neutral info står på Devoteams aqua.
 
    Alle tekstfarver er kontrastvalideret mod den flade de faktisk står på,
    både i lys og mørk tilstand — mindst WCAG AA (4.5:1) for brødtekst.
@@ -31,40 +37,55 @@
    eksisterende komponent (kilde-badge, chip, måler) uændret ovenpå den.
    ========================================================================= */
 
+@font-face {
+  font-family: "Montserrat";
+  src: url("./assets/fonts/Montserrat-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Montserrat";
+  src: url("./assets/fonts/Montserrat-Italic-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
 
   /* — flader ————————————————————————————————————————— */
-  --plane: #eef0f7;
+  --plane: #f6f6f5;
   --surface: #ffffff;
-  --surface-2: #f6f8fc;
-  --surface-3: #eef2f8;
-  --surface-inv: #0d1120;
+  --surface-2: #f9f9f8;
+  --surface-3: #efeeee;
+  --surface-inv: #3c3c3a;
 
   /* — blæk ——————————————————————————————————————————— */
-  --ink: #0b0f1c;       /* overskrifter, tal */
-  --ink-2: #475569;     /* brødtekst        7,6:1 på hvid */
-  --ink-3: #5b6a82;     /* dæmpet/meta      5,7:1 på hvid */
-  --ink-inv: #f3f7fc;
+  --ink: #3c3c3a;       /* overskrifter, tal */
+  --ink-2: #4f4f4c;     /* brødtekst        7,6:1 på hvid */
+  --ink-3: #6a6a67;     /* dæmpet/meta      5,7:1 på hvid */
+  --ink-inv: #ffffff;
 
   /* — streger ————————————————————————————————————————— */
-  --line: #e4e8f1;
-  --line-2: #ccd6e5;
-  --line-strong: #b3c1d6;
+  --line: #e5e4e3;
+  --line-2: #d6d4d2;
+  --line-strong: #bdbbb8;
 
   /* — husets accent: "systemet selv" —————————————————————
      6,2:1 på hvid som tekstfarve. --brand-solid er knappens flade og har
      ALTID hvid tekst ovenpå (5,1:1 i mørk tilstand, 6,2:1 i lys) — derfor
-     er den bevidst den samme mættede violet i begge tilstande, mens
+     er den bevidst den samme mættede poppy i begge tilstande, mens
      --brand (tekst/ikon) lysner i mørk tilstand. */
-  --brand: #5b45e0;
-  --brand-solid: #5b45e0;
-  --brand-lift: #7059ef;
-  --brand-soft: #f0edfe;
-  --brand-soft-2: #e5e0fc;
-  --brand-line: #d5cdfb;
-  --brand-glow: rgba(91, 69, 224, 0.42);
-  --brand-aura: rgba(91, 69, 224, 0.14);
+  --brand: #d92b45;
+  --brand-solid: #d92b45;
+  --brand-lift: #f8485e;
+  --brand-soft: #fef0f2;
+  --brand-soft-2: #fddade;
+  --brand-line: #fca2ae;
+  --brand-glow: rgba(248, 72, 94, 0.32);
+  --brand-aura: transparent;
 
   /* — signal: verificeret / live kilde ————————————————— */
   --ok-fg: #0d6b45;     /* 6,6:1 på hvid */
@@ -79,10 +100,10 @@
   --demo-mark: #fab219;
 
   /* — signal: kræver afklaring / flag ————————————————— */
-  --alert-fg: #b91c1c;  /* 6,5:1 på hvid */
-  --alert-bg: #fdecec;
-  --alert-bd: #f5c4c0;
-  --alert-mark: #d03b3b;
+  --alert-fg: #8a1530;  /* 6,5:1 på hvid */
+  --alert-bg: #fbeaed;
+  --alert-bd: #efb9c3;
+  --alert-mark: #8a1530;
 
   /* — signal: mellemniveau (middel soliditet, verifikation) —— */
   --warn-fg: #9a3412;   /* 7,3:1 på hvid */
@@ -91,31 +112,27 @@
   --warn-mark: #ec835a;
 
   /* — neutral information / kilde-reference ——————————— */
-  --info-fg: #1c5cab;   /* 6,6:1 på hvid */
-  --info-bg: #e9f1fd;
-  --info-bd: #c2daf8;
-  --info-mark: #2a78d6;
+  --info-fg: #3c3c3a;   /* 8,9:1 på aqua */
+  --info-bg: #d7ebe7;
+  --info-bd: #b5d6cf;
+  --info-mark: #5f8f86;
 
-  /* Dataviz single-series hue — valideret med dataviz-skillens
-     scripts/validate_palette.js mod netop denne apps kortflade:
-     "#2a78d6" --mode light --surface "#ffffff" → alle checks PASS.
-     Mørk tilstand: "#3987e5" --mode dark --surface "#111826" → alle PASS.
-     Kortfladen i mørk tilstand er siden gjort en anelse mørkere
-     (#101623), hvilket kun HÆVER kontrasten (4,9:1 → 5,0:1) — men skift
-     ikke selve farven uden at køre validatoren igen. */
-  --chart-line: #2a78d6;
-  --chart-fill: rgba(42, 120, 214, 0.10);
-  --chart-grid: #e7ecf4;
+  /* Dataviz single-series hue. Devoteam har ingen accentpalet, så serien er
+     mørkegrå (11:1 på hvid) i lys tilstand og aqua i mørk — aldrig poppy,
+     der er forbeholdt systemet selv. */
+  --chart-line: #3c3c3a;
+  --chart-fill: rgba(60, 60, 58, 0.08);
+  --chart-grid: #efeeee;
 
   /* — effekter ————————————————————————————————————————— */
   --sheen: rgba(255, 255, 255, 0.85);
-  --shadow-1: 0 1px 2px rgba(11, 15, 28, 0.045), 0 1px 1px rgba(11, 15, 28, 0.03);
-  --shadow-2: 0 1px 2px rgba(11, 15, 28, 0.05), 0 10px 30px -14px rgba(11, 15, 28, 0.18);
-  --shadow-3: 0 1px 2px rgba(11, 15, 28, 0.05), 0 24px 50px -24px rgba(11, 15, 28, 0.26);
-  --shadow-pop: 0 16px 44px -14px rgba(11, 15, 28, 0.3), 0 2px 6px rgba(11, 15, 28, 0.07);
-  --glass: rgba(255, 255, 255, 0.72);
-  --grid-ink: rgba(11, 15, 28, 0.04);
-  --hairline: rgba(11, 15, 28, 0.06);
+  --shadow-1: 0 1px 2px rgba(60, 60, 58, 0.06), 0 1px 1px rgba(60, 60, 58, 0.04);
+  --shadow-2: 0 4px 12px rgba(60, 60, 58, 0.08), 0 2px 4px rgba(60, 60, 58, 0.04);
+  --shadow-3: 0 12px 32px rgba(60, 60, 58, 0.12), 0 4px 8px rgba(60, 60, 58, 0.06);
+  --shadow-pop: 0 16px 40px -12px rgba(60, 60, 58, 0.28), 0 2px 6px rgba(60, 60, 58, 0.07);
+  --glass: rgba(255, 255, 255, 0.92);
+  --grid-ink: transparent;
+  --hairline: rgba(60, 60, 58, 0.06);
 
   /* — geometri ————————————————————————————————————————— */
   --r-xs: 6px;
@@ -142,8 +159,9 @@
   --t-mid: 0.28s;
 
   /* — typografi ————————————————————————————————————————— */
-  --font-sans: "Inter Tight", Inter, ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Devoteam: Montserrat i alle størrelser, leveret lokalt (se @font-face). */
+  --font-sans: "Montserrat", "Helvetica Neue", Arial, ui-sans-serif, system-ui,
+    sans-serif;
   /* Monospace bruges til ID'er og tal der læses tegn for tegn — CVR-numre,
      notice-numre, CPV-koder — og til de spærrede etiketter over hvert felt.
      Ikke som stilgreb: det er hurtigere at sammenholde med et andet dokument
@@ -176,29 +194,29 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --plane: #080a12;
-    --surface: #101623;
-    --surface-2: #161d2c;
-    --surface-3: #1d2637;
-    --surface-inv: #e6edf7;
+    --plane: #1f1f1e;
+    --surface: #2a2a28;
+    --surface-2: #323230;
+    --surface-3: #3a3a38;
+    --surface-inv: #f3f3f2;
 
-    --ink: #eaf1fa;
-    --ink-2: #b3c2d6;   /* 8,6:1 på kortfladen */
-    --ink-3: #8ea3bd;   /* 7,1:1 på kortfladen */
-    --ink-inv: #0b0f1c;
+    --ink: #f3f3f2;
+    --ink-2: #d3d3d0;   /* 8,6:1 på kortfladen */
+    --ink-3: #b9b9b5;   /* 7,1:1 på kortfladen */
+    --ink-inv: #3c3c3a;
 
-    --line: #222c40;
-    --line-2: #2e3a52;
-    --line-strong: #3c4a66;
+    --line: #3a3a38;
+    --line-2: #474745;
+    --line-strong: #5a5a57;
 
-    --brand: #a99bff;   /* 8,0:1 på kortfladen */
-    --brand-solid: #6a53f0;
-    --brand-lift: #8570f5;
-    --brand-soft: rgba(122, 96, 245, 0.16);
-    --brand-soft-2: rgba(122, 96, 245, 0.24);
-    --brand-line: rgba(148, 126, 250, 0.34);
-    --brand-glow: rgba(106, 83, 240, 0.5);
-    --brand-aura: rgba(122, 96, 245, 0.2);
+    --brand: #ff8a99;   /* 8,0:1 på kortfladen */
+    --brand-solid: #d92b45;
+    --brand-lift: #f8485e;
+    --brand-soft: rgba(248, 72, 94, 0.14);
+    --brand-soft-2: rgba(248, 72, 94, 0.22);
+    --brand-line: rgba(252, 162, 174, 0.36);
+    --brand-glow: rgba(248, 72, 94, 0.4);
+    --brand-aura: transparent;
 
     --ok-fg: #6ee7b7;   /* 11,7:1 */
     --ok-bg: rgba(12, 163, 12, 0.13);
@@ -210,32 +228,32 @@
     --demo-bd: rgba(251, 191, 36, 0.26);
     --demo-mark: #fab219;
 
-    --alert-fg: #fca5a5; /* 9,4:1 */
-    --alert-bg: rgba(208, 59, 59, 0.16);
-    --alert-bd: rgba(252, 165, 165, 0.28);
-    --alert-mark: #d03b3b;
+    --alert-fg: #ffb3bf; /* 9,4:1 */
+    --alert-bg: rgba(138, 21, 48, 0.32);
+    --alert-bd: rgba(255, 179, 191, 0.3);
+    --alert-mark: #e05570;
 
     --warn-fg: #f2b393;
     --warn-bg: rgba(236, 131, 90, 0.14);
     --warn-bd: rgba(242, 179, 147, 0.26);
     --warn-mark: #ec835a;
 
-    --info-fg: #93c5fd;  /* 9,9:1 */
-    --info-bg: rgba(57, 135, 229, 0.15);
-    --info-bd: rgba(57, 135, 229, 0.32);
-    --info-mark: #3987e5;
+    --info-fg: #c9e3dd;  /* 9,9:1 */
+    --info-bg: rgba(215, 235, 231, 0.12);
+    --info-bd: rgba(215, 235, 231, 0.26);
+    --info-mark: #8fbfb5;
 
-    --chart-line: #3987e5;
-    --chart-fill: rgba(57, 135, 229, 0.14);
-    --chart-grid: #1f293c;
+    --chart-line: #d7ebe7;
+    --chart-fill: rgba(215, 235, 231, 0.12);
+    --chart-grid: #3a3a38;
 
     --sheen: rgba(255, 255, 255, 0.07);
     --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
     --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -16px rgba(0, 0, 0, 0.8);
     --shadow-3: 0 1px 2px rgba(0, 0, 0, 0.4), 0 26px 54px -26px rgba(0, 0, 0, 0.9);
     --shadow-pop: 0 18px 48px -16px rgba(0, 0, 0, 0.85), 0 2px 6px rgba(0, 0, 0, 0.5);
-    --glass: rgba(16, 22, 35, 0.78);
-    --grid-ink: rgba(255, 255, 255, 0.035);
+    --glass: rgba(42, 42, 40, 0.92);
+    --grid-ink: transparent;
     --hairline: rgba(255, 255, 255, 0.07);
   }
 }
@@ -243,29 +261,29 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --plane: #080a12;
-  --surface: #101623;
-  --surface-2: #161d2c;
-  --surface-3: #1d2637;
-  --surface-inv: #e6edf7;
+  --plane: #1f1f1e;
+  --surface: #2a2a28;
+  --surface-2: #323230;
+  --surface-3: #3a3a38;
+  --surface-inv: #f3f3f2;
 
-  --ink: #eaf1fa;
-  --ink-2: #b3c2d6;
-  --ink-3: #8ea3bd;
-  --ink-inv: #0b0f1c;
+  --ink: #f3f3f2;
+  --ink-2: #d3d3d0;
+  --ink-3: #b9b9b5;
+  --ink-inv: #3c3c3a;
 
-  --line: #222c40;
-  --line-2: #2e3a52;
-  --line-strong: #3c4a66;
+  --line: #3a3a38;
+  --line-2: #474745;
+  --line-strong: #5a5a57;
 
-  --brand: #a99bff;
-  --brand-solid: #6a53f0;
-  --brand-lift: #8570f5;
-  --brand-soft: rgba(122, 96, 245, 0.16);
-  --brand-soft-2: rgba(122, 96, 245, 0.24);
-  --brand-line: rgba(148, 126, 250, 0.34);
-  --brand-glow: rgba(106, 83, 240, 0.5);
-  --brand-aura: rgba(122, 96, 245, 0.2);
+  --brand: #ff8a99;
+  --brand-solid: #d92b45;
+  --brand-lift: #f8485e;
+  --brand-soft: rgba(248, 72, 94, 0.14);
+  --brand-soft-2: rgba(248, 72, 94, 0.22);
+  --brand-line: rgba(252, 162, 174, 0.36);
+  --brand-glow: rgba(248, 72, 94, 0.4);
+  --brand-aura: transparent;
 
   --ok-fg: #6ee7b7;
   --ok-bg: rgba(12, 163, 12, 0.13);
@@ -277,32 +295,32 @@
   --demo-bd: rgba(251, 191, 36, 0.26);
   --demo-mark: #fab219;
 
-  --alert-fg: #fca5a5;
-  --alert-bg: rgba(208, 59, 59, 0.16);
-  --alert-bd: rgba(252, 165, 165, 0.28);
-  --alert-mark: #d03b3b;
+  --alert-fg: #ffb3bf;
+  --alert-bg: rgba(138, 21, 48, 0.32);
+  --alert-bd: rgba(255, 179, 191, 0.3);
+  --alert-mark: #e05570;
 
   --warn-fg: #f2b393;
   --warn-bg: rgba(236, 131, 90, 0.14);
   --warn-bd: rgba(242, 179, 147, 0.26);
   --warn-mark: #ec835a;
 
-  --info-fg: #93c5fd;
-  --info-bg: rgba(57, 135, 229, 0.15);
-  --info-bd: rgba(57, 135, 229, 0.32);
-  --info-mark: #3987e5;
+  --info-fg: #c9e3dd;
+  --info-bg: rgba(215, 235, 231, 0.12);
+  --info-bd: rgba(215, 235, 231, 0.26);
+  --info-mark: #8fbfb5;
 
-  --chart-line: #3987e5;
-  --chart-fill: rgba(57, 135, 229, 0.14);
-  --chart-grid: #1f293c;
+  --chart-line: #d7ebe7;
+  --chart-fill: rgba(215, 235, 231, 0.12);
+  --chart-grid: #3a3a38;
 
   --sheen: rgba(255, 255, 255, 0.07);
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -16px rgba(0, 0, 0, 0.8);
   --shadow-3: 0 1px 2px rgba(0, 0, 0, 0.4), 0 26px 54px -26px rgba(0, 0, 0, 0.9);
   --shadow-pop: 0 18px 48px -16px rgba(0, 0, 0, 0.85), 0 2px 6px rgba(0, 0, 0, 0.5);
-  --glass: rgba(16, 22, 35, 0.78);
-  --grid-ink: rgba(255, 255, 255, 0.035);
+  --glass: rgba(42, 42, 40, 0.92);
+  --grid-ink: transparent;
   --hairline: rgba(255, 255, 255, 0.07);
 }
 
@@ -335,10 +353,10 @@ body {
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  font-feature-settings: "cv05" 1, "ss01" 1;
 }
 
-/* Baggrunden: et næsten usynligt teknisk raster plus én rolig violet aura
+/* Baggrunden: raster og aura er slået fra (--grid-ink og --brand-aura er
+   transparent), fordi Devoteam bruger flade, rolige flader. Tidligere: raster plus aura
    oppe til venstre, hvor skinnen står. Begge ligger BAG alt indhold og ses
    kun i mellemrummene. Ingen bevægelse, ingen af signalfarverne. */
 body::before {
@@ -419,17 +437,17 @@ hr {
    Typografi-hjælpere
    ========================================================================== */
 
-/* Spærret mono-etiket. Sidder over hvert felt og hver sektion og er appens
-   mest gennemgående typografiske greb — den signalerer "instrumentbræt",
-   ikke "hjemmeside". */
+/* Spærret etiket over hvert felt og hver sektion — Devoteams "eyebrow":
+   Montserrat semibold, versaler, let spærret. Mono er forbeholdt ID'er og
+   tal, der læses tegn for tegn. */
 .eyebrow {
   margin: 0 0 var(--s2) 0;
-  font-size: 0.625rem;
-  letter-spacing: 0.2em;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-3);
-  font-weight: 650;
-  font-family: var(--font-mono);
+  font-weight: 600;
+  font-family: var(--font-sans);
 }
 
 .top-title {
@@ -580,19 +598,32 @@ hr {
   padding: 0 var(--s2);
 }
 
-/* Monogram: et lille datamærke i stedet for et logo vi ikke har — fire
-   datapunkter og en linje, samme figur som grafen på virksomhedsopslaget. */
-.brand-mark {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--r-md);
-  display: grid;
-  place-items: center;
-  background: linear-gradient(160deg, var(--brand-lift), var(--brand-solid));
-  color: #ffffff;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset,
-    0 8px 20px -10px var(--brand-glow);
+/* Devoteams ordmærke: "devoteam" i fed Montserrat med Red Poppy-prikken som
+   kendetegn. En tekstgengivelse, indtil det officielle SVG-logo lægges i
+   src/assets. */
+.dt-logo {
+  display: inline-flex;
+  align-items: baseline;
+  font-weight: 700;
+  font-size: 1.375rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.dt-logo__dot {
+  display: inline-block;
+  width: 0.2em;
+  height: 0.2em;
+  margin-left: 0.05em;
+  border-radius: 50%;
+  background: var(--brand-lift);
+}
+
+.topbar__skel {
+  width: 1px;
+  height: 28px;
+  background: var(--line-2);
 }
 
 .brand-mark svg {
@@ -620,9 +651,9 @@ hr {
   margin: 0 0 var(--s2);
   padding: 0 var(--s2);
   font-size: 0.5625rem;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-weight: 650;
   color: var(--ink-3);
 }
@@ -670,7 +701,7 @@ hr {
   color: var(--ink-2);
 }
 
-/* Aktiv rute: violet mærke i venstre kant + tonet flade. Farven er husets
+/* Aktiv rute: poppy mærke i venstre kant + tonet flade. Farven er husets
    accent, ikke et datasignal — se reglen øverst i filen. */
 .rail__item[aria-current="page"] {
   background: var(--brand-soft);
@@ -754,7 +785,7 @@ hr {
 
 /* Kort der venter på data får en tynd, vandrende linje i toppen — samme
    signal som en igangværende forespørgsel, uden at flytte på indholdet.
-   Violet: det er systemet der arbejder, ikke et udsagn om data. */
+   Poppy: det er systemet der arbejder, ikke et udsagn om data. */
 .card.is-working::after,
 .console.is-working::after {
   content: "";
@@ -820,31 +851,31 @@ hr {
   border-radius: var(--r-2xl);
   padding: var(--s7);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #0b0e1a;
+  background: #3c3c3a;
   box-shadow: 0 1px 2px rgba(6, 8, 16, 0.4), 0 28px 60px -30px rgba(6, 8, 16, 0.6);
 
   color-scheme: dark;
-  --surface: #151b2b;
-  --surface-2: #1a2133;
-  --surface-3: #212a3e;
-  --surface-inv: #e6edf7;
+  --surface: #474745;
+  --surface-2: #4f4f4c;
+  --surface-3: #575754;
+  --surface-inv: #f3f3f2;
 
-  --ink: #f2f6fd;
-  --ink-2: #b8c6da;
-  --ink-3: #93a6c0;
-  --ink-inv: #0b0f1c;
+  --ink: #ffffff;
+  --ink-2: #e3e3e0;
+  --ink-3: #c9c9c5;
+  --ink-inv: #3c3c3a;
 
   --line: rgba(255, 255, 255, 0.09);
   --line-2: rgba(255, 255, 255, 0.14);
   --line-strong: rgba(255, 255, 255, 0.24);
 
-  /* Den lysere af de to violette flader — den mørkere ville stå for tæt
+  /* Den lysere af de to poppy-flader — den mørkere ville stå for tæt
      på konsollens egen baggrund. Hvid tekst er stadig 5,1:1. */
-  --brand: #b3a6ff;
-  --brand-solid: #6a53f0;
-  --brand-lift: #8570f5;
-  --brand-soft: rgba(122, 96, 245, 0.2);
-  --brand-line: rgba(148, 126, 250, 0.38);
+  --brand: #ffb0ba;
+  --brand-solid: #d92b45;
+  --brand-lift: #f8485e;
+  --brand-soft: rgba(248, 72, 94, 0.2);
+  --brand-line: rgba(252, 162, 174, 0.42);
 
   --ok-fg: #6ee7b7;
   --ok-bg: rgba(12, 163, 12, 0.15);
@@ -854,17 +885,17 @@ hr {
   --demo-bg: rgba(250, 178, 25, 0.14);
   --demo-bd: rgba(251, 191, 36, 0.28);
 
-  --alert-fg: #fca5a5;
-  --alert-bg: rgba(208, 59, 59, 0.18);
-  --alert-bd: rgba(252, 165, 165, 0.3);
+  --alert-fg: #ffb3bf;
+  --alert-bg: rgba(138, 21, 48, 0.4);
+  --alert-bd: rgba(255, 179, 191, 0.32);
 
   --warn-fg: #f2b393;
   --warn-bg: rgba(236, 131, 90, 0.16);
   --warn-bd: rgba(242, 179, 147, 0.28);
 
-  --info-fg: #93c5fd;
-  --info-bg: rgba(57, 135, 229, 0.17);
-  --info-bd: rgba(57, 135, 229, 0.34);
+  --info-fg: #d7ebe7;
+  --info-bg: rgba(215, 235, 231, 0.14);
+  --info-bd: rgba(215, 235, 231, 0.3);
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -16px rgba(0, 0, 0, 0.8);
@@ -879,8 +910,9 @@ hr {
   z-index: -1;
   inset: -40% -10% auto -20%;
   height: 130%;
-  background: radial-gradient(46% 62% at 12% 0%, rgba(122, 96, 245, 0.38), transparent 68%),
-    radial-gradient(40% 55% at 88% 10%, rgba(42, 120, 214, 0.2), transparent 70%);
+  /* Devoteam bruger flade, varme flader frem for tekniske gradienter — kun
+     et svagt poppy-skær, ingen raster. */
+  background: radial-gradient(46% 62% at 12% 0%, rgba(248, 72, 94, 0.18), transparent 68%);
 }
 
 .console::after {
@@ -888,8 +920,7 @@ hr {
   position: absolute;
   z-index: -1;
   inset: 0;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-image: none;
   background-size: 40px 40px;
   mask-image: radial-gradient(90% 120% at 15% 0%, #000, transparent 70%);
   -webkit-mask-image: radial-gradient(90% 120% at 15% 0%, #000, transparent 70%);
@@ -1120,12 +1151,12 @@ hr {
 
 /* "AI-genereret" — husets accent, aldrig et af de tre datasignaler.
    Prikken foran er ikke pynt: den gør mærket læsbart i sort/hvid print,
-   hvor den violette flade forsvinder. */
+   hvor den poppy-flade forsvinder. */
 .pill--ai {
   background: var(--brand-soft);
   border-color: var(--brand-line);
   color: var(--brand);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 0.6875rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1169,9 +1200,9 @@ hr {
   color: var(--ink-3);
   font-size: 0.625rem;
   text-transform: uppercase;
-  letter-spacing: 0.11em;
+  letter-spacing: 0.08em;
   font-weight: 650;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 /* — kilde-badge —————————————————————————————————————————
@@ -1298,11 +1329,11 @@ hr {
 .verdict__label {
   margin: 0;
   font-size: 0.625rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 650;
   color: var(--ink-3);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .verdict__value {
@@ -1349,7 +1380,7 @@ hr {
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .confidence--high {
@@ -1432,11 +1463,11 @@ hr {
 .stat__label {
   margin: 0 0 var(--s1);
   font-size: 0.625rem;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 650;
   color: var(--ink-3);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .stat__value {
@@ -1469,8 +1500,8 @@ hr {
   font-weight: 650;
   font-size: 0.625rem;
   text-transform: uppercase;
-  letter-spacing: 0.13em;
-  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  font-family: var(--font-sans);
   white-space: nowrap;
   background: var(--surface-2);
 }
@@ -1535,9 +1566,9 @@ label {
   margin-bottom: 7px;
   font-size: 0.6875rem;
   font-weight: 650;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   color: var(--ink-3);
 }
 
@@ -1700,7 +1731,7 @@ select:focus {
   cursor: not-allowed;
 }
 
-/* Den primære handling. Violet flade med hvid tekst i BEGGE tilstande —
+/* Den primære handling. Poppy flade med hvid tekst i BEGGE tilstande —
    --brand-solid skifter kun en anelse, netop for at holde hvid tekst over
    AA (6,2:1 lys / 5,1:1 mørk). */
 .btn-primary {
@@ -1908,8 +1939,8 @@ select:focus {
   animation-delay: 0.32s;
 }
 
-/* I en knap arver tilstanden knappens egen farve — ellers ville den violette
-   prik forsvinde på den violette primærknap. */
+/* I en knap arver tilstanden knappens egen farve — ellers ville den poppy-
+   prik forsvinde på den poppy-primærknap. */
 .btn .working {
   color: inherit;
   font-size: inherit;
@@ -1920,7 +1951,7 @@ select:focus {
 }
 
 /* Operations-chip: ét diskret kald, med sin egen tilstand. Kørende =
-   violet (systemet arbejder), færdig = grøn (data er hentet), fejlet =
+   poppy (systemet arbejder), færdig = grøn (data er hentet), fejlet =
    rød (mangler afklaring) — de to sidste ER datasignaler og bruger derfor
    signalfarverne med fuld ret. */
 .op {
@@ -2432,7 +2463,7 @@ html {
    "Hvor mange virksomheder er i denne branche" er én skala, og en skala har én
    farve. Gav hver branche sin egen kulør, ville farven foregive at betyde
    noget, den ikke betyder. Farven er --info-mark, samme som TrendChart bruger
-   til dataserier — bevidst hverken violet (systemet gør noget) eller
+   til dataserier — bevidst hverken poppy (systemet gør noget) eller
    grøn/gul/rød (datakvalitet). Se farvereglerne i toppen af filen.
    ========================================================================== */
 
@@ -3119,7 +3150,7 @@ html {
     --line: #cccccc;
     --line-2: #999999;
     --line-strong: #666666;
-    --brand: #3b2ba8;
+    --brand: #c8233d;
     --brand-soft: #ffffff;
     --brand-line: #999999;
     --shadow-1: none;

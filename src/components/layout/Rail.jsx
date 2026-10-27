@@ -32,11 +32,9 @@ export default function Rail({ flows, activeView, onChangeView }) {
   return (
     <aside className="rail">
       <div className="rail__brand">
-        <span className="brand-mark">
-          <BrandMark />
-        </span>
+        <BrandMark />
         <div className="brand-text">
-          <p className="eyebrow">Market Intelligence</p>
+          <p className="eyebrow">AI-driven tech consulting</p>
           <h1 className="top-title">Markedsanalyse</h1>
         </div>
       </div>
