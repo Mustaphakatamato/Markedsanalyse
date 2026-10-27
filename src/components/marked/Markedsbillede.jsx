@@ -177,7 +177,7 @@ export default function Markedsbillede({ statistik, koncentration, status, fejl,
                 {" "}
                 {koncentration.antalOverMikro.toLocaleString("da-DK")} af markedets{" "}
                 {koncentration.ialt.toLocaleString("da-DK")} virksomheder er selskaber
-                frem for enkeltmandsvirksomheder — det er dem, kandidatlisten
+                frem for enkeltmandsvirksomheder — det er dem, leverandørlisten
                 rangerer øverst.
               </>
             )}
@@ -241,7 +241,7 @@ export default function Markedsbillede({ statistik, koncentration, status, fejl,
         </li>
         <li>
           Antallet siger intet om kapacitet eller egnethed — en virksomhed i branchen er
-          ikke det samme som en mulig leverandør. Brug kandidatlisten nedenfor til den
+          ikke det samme som en mulig leverandør. Brug leverandørlisten i trin 3 til den
           konkrete vurdering.
         </li>
         <li>

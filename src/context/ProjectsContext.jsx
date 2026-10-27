@@ -9,16 +9,69 @@ const STORAGE_KEY = "markedsanalyse.projects";
 // Skemaversion. Et udbud er brugerens eget arbejde og må ikke gå tabt, fordi
 // datamodellen ændrer sig — derfor migreres gamle udbud frem i stedet for at
 // blive kasseret. Hæv ved BRYDENDE ændringer, og tilføj et trin i migrer().
-const SKEMA_VERSION = 2;
+const SKEMA_VERSION = 3;
 
 const ProjectsContext = createContext(null);
+
+// Standardværdier for det, version 3 lagde til. Ét sted, så et nyt udbud og
+// et migreret udbud ikke kan ende med hver sin udgave af "tomt".
+function nytBehov(felter = {}) {
+  return {
+    hvad: "",
+    formaal: "",
+    varighedAar: null,
+    geografi: "",
+    // { cvr, navn } — den nuværende kontraktholder, hvis der er en
+    nuvaerende: null,
+    opdeling: "ved_ikke", // ja | nej | ved_ikke
+    saerligeKrav: "",
+    ...felter
+  };
+}
+
+// Minimumsomsætning udtrykkes som en FAKTOR på den årlige kontraktværdi, ikke
+// som et beløb. Ret man værdien i behovet, følger kravet med — et fast beløb
+// ville stå tilbage og pludselig ligge over lovens loft på 2×.
+const STANDARD_OEKONOMIKRAV = {
+  omsaetningAktiv: true,
+  omsaetningFaktor: 1,
+  egenkapitalAktiv: true,
+  soliditetAktiv: false,
+  minSoliditet: 15
+};
+
+// Version 3 gør udbuddet til en markedsdialog: en guidet behovsopgørelse,
+// AI'ens forslag til marked (gemt, så det ikke koster et nyt kald ved hvert
+// besøg), periode for vinderoptællingen, et krav til økonomisk formåen og de
+// regnskaber, der allerede er hentet — de koster to kald mod
+// Erhvervsstyrelsen pr. virksomhed og skal ikke hentes igen efter et refresh.
+function migrerTilV3(v2) {
+  return {
+    ...v2,
+    skemaVersion: SKEMA_VERSION,
+    // Den gamle beskrivelse ER svaret på "hvad skal anskaffes" — er den tom,
+    // er titlen det bedste bud. Felterne beholdes, så intet forsvinder.
+    behov: nytBehov({ hvad: v2.beskrivelse || v2.titel || "" }),
+    aiForslag: null,
+    periodeAar: 5,
+    oekonomikrav: { ...STANDARD_OEKONOMIKRAV },
+    regnskaber: {},
+    // Et udbud med valgte brancher har allerede et marked — åbn der.
+    trin: v2.branchekoder?.length ? "marked" : "behov"
+  };
+}
+
+function migrer(gemt) {
+  if (!gemt || typeof gemt !== "object") return null;
+  if (gemt.skemaVersion === SKEMA_VERSION) return gemt;
+  const v2 = gemt.skemaVersion === 2 ? gemt : migrerTilV2(gemt);
+  return v2 ? migrerTilV3(v2) : null;
+}
 
 // Version 1 havde én CPV-kode som streng og anslået værdi som FRITEKST
 // ("Fx 25 mio. DKK"), så der kunne ikke regnes på den. Version 2 har flere
 // CPV-koder, værdi som tal, bekræftede branchekoder og en shortliste.
-function migrer(gemt) {
-  if (!gemt || typeof gemt !== "object") return null;
-  if (gemt.skemaVersion === SKEMA_VERSION) return gemt;
+function migrerTilV2(gemt) {
 
   // Fritekstværdien forsøges tolket, men gættes ikke: "25 mio. DKK" bliver
   // til 25.000.000, mens noget uforståeligt bliver til null og skal udfyldes
@@ -35,7 +88,7 @@ function migrer(gemt) {
 
   return {
     id: gemt.id ?? crypto.randomUUID(),
-    skemaVersion: SKEMA_VERSION,
+    skemaVersion: 2,
     titel: gemt.titel ?? gemt.title ?? "Uden titel",
     beskrivelse: gemt.beskrivelse ?? gemt.description ?? "",
     // v1's cpvCode var én kode uden betegnelse. Betegnelsen slås op igen i
@@ -97,6 +150,12 @@ export function ProjectsProvider({ children }) {
       kommunekoder: [],
       shortliste: [],
       noter: "",
+      behov: nytBehov(felter.behov),
+      aiForslag: null,
+      periodeAar: 5,
+      oekonomikrav: { ...STANDARD_OEKONOMIKRAV },
+      regnskaber: {},
+      trin: "behov",
       oprettet: new Date().toISOString(),
       aendret: new Date().toISOString()
     };
@@ -111,6 +170,18 @@ export function ProjectsProvider({ children }) {
     setUdbud((forrige) =>
       forrige.map((u) =>
         u.id === id ? { ...u, ...aendringer, aendret: new Date().toISOString() } : u
+      )
+    );
+  };
+
+  // Regnskaberne hentes parallelt og lander ét ad gangen. Gik de gennem
+  // opdaterUdbud med et samlet objekt, ville hvert svar overskrive de andre
+  // med den udgave, det selv så ved start — derfor flettes de her, i den
+  // funktionelle opdatering, mod den nyeste tilstand.
+  const gemRegnskaber = (id, nye) => {
+    setUdbud((forrige) =>
+      forrige.map((u) =>
+        u.id === id ? { ...u, regnskaber: { ...u.regnskaber, ...nye } } : u
       )
     );
   };
@@ -133,7 +204,15 @@ export function ProjectsProvider({ children }) {
 
   return (
     <ProjectsContext.Provider
-      value={{ udbud, gemtFejl, opretUdbud, opdaterUdbud, sletUdbud, skiftShortliste }}
+      value={{
+        udbud,
+        gemtFejl,
+        opretUdbud,
+        opdaterUdbud,
+        gemRegnskaber,
+        sletUdbud,
+        skiftShortliste
+      }}
     >
       {children}
     </ProjectsContext.Provider>

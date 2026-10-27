@@ -22,7 +22,7 @@ produktion. Selve datakilderne kræver hverken nøgler eller login.
 ## Status
 
 Fungerende MVP med fire flows og seks live datakilder. Backend'en består af
-femten Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
+seksten Edge Functions med cache i Postgres. Der er endnu ingen brugerkonti, og udbud
 gemmes stadig i browserens `localStorage` — de migreres dog frem ved
 skemaændringer, så et udbud ikke går tabt (se `ProjectsContext`).
 
@@ -71,26 +71,38 @@ registreringsnummer), ikke `buyer-name`. Se
 [`ordregiverService.js`](src/services/ordregiverService.js) og migrationen
 [`20260825120000_ordregiver_opslag.sql`](supabase/migrations/20260825120000_ordregiver_opslag.sql).
 
-**Udbud & markedsanalyse** ([`pages/TenderPage.jsx`](src/pages/TenderPage.jsx))
-— opret et udbud og afdæk leverandørmarkedet før udbuddet. Alt bygger på
-rigtige kilder:
-- **CPV-koder** søges blandt de 9.454 officielle danske betegnelser. Flere pr.
-  udbud — et IT-driftsudbud rammer sjældent kun én kode
-- **Brancheforslag**: der findes ingen officiel oversættelse fra CPV til
-  branchekode, så den udledes af data — vinderne af nylige danske udbud i
-  CPV-feltet slås op i CVR, og deres faktiske brancher foreslås med andele og
-  dækningsgrad. Forslaget bekræftes eller rettes af ordregiveren, aldrig
-  automatisk
-- **Markedsbillede**: hvor mange virksomheder findes der reelt, hvad laver de,
-  hvor ligger de, og hvilke selskabsformer består markedet af — grundlaget for
-  "opdel eller forklar" (udbudslovens § 49)
-- **Kandidatliste** med to kilder, der svarer på hver sit spørgsmål:
-  *Hele markedet* (CVR, rangeret efter størrelse) og *Har vundet før* (TED,
-  rangeret efter vundne kontrakter hos danske ordregivere). Fælles shortliste.
-  Nøgletal hentes kun for de shortlistede, da hvert opslag koster to kald mod
-  Erhvervsstyrelsen
-- **Seneste kontrakttildelinger** i CPV-feltet fra TED
-- **Udskriv som bilag** — print-CSS'en viser shortlisten, ikke hele listen
+**Markedsdialog** ([`pages/TenderPage.jsx`](src/pages/TenderPage.jsx), trinene
+i [`components/dialog`](src/components/dialog)) — ordregiverens forarbejde før
+et udbud, i fem trin. Trinene er ikke låst; man kan gå tilbage og rette, og
+alt gemmes ved hver ændring:
+
+1. **Behov** — en guidet behovsopgørelse i tre spørgsmålsgrupper (opgaven,
+   rammer, markedet i dag). "Find markedet" sender beskrivelsen til
+   [`behov-marked`](supabase/functions/behov-marked/index.ts), der med AI
+   foreslår CPV-koder med begrundelse, afgrænsning og opdeling. Hver kode slås
+   op i den officielle nomenklatur, før den vises — modellen kan ikke opfinde
+   en kode, og betegnelsen er altid den officielle. Intet bruges, før
+   ordregiveren har valgt det til; CPV-vælgeren står nedenunder.
+2. **Marked** — nøgletal (virksomheder, SMV-estimat, EU-vindere,
+   koncentration), **brancheforslag** udledt af hvad vinderne i feltet faktisk
+   laver, **markedsbillede** (grundlaget for "opdel eller forklar",
+   udbudslovens § 49) og seneste kontrakttildelinger fra TED.
+3. **Leverandører** — CVR-markedets 200 største og TED-vinderne samlet i én
+   liste ([`leverandoerService.js`](src/services/leverandoerService.js)). Hver
+   leverandør får efterprøvelige mærker (vundet i feltet, rette branche, lokal,
+   nuværende leverandør, størrelse passer) i stedet for en samlet score.
+   Sejrene tælles over 3, 5 eller 10 år og kan foldes ud til de enkelte
+   tildelinger. Nøgletal og ansatte hentes automatisk for de 25 øverste og
+   shortlisten og gemmes i dialogen. SMV følger EU's definition; uden tal er
+   det et estimat.
+4. **Økonomisk formåen** — kravsimulator
+   ([`oekonomikrav.js`](src/services/oekonomikrav.js)): minimumsomsætning som
+   faktor af den årlige værdi med lovens loft (2 × kontraktværdien, § 142,
+   stk. 2) markeret, positiv egenkapital og soliditetsgrad. Viser live hvor
+   mange af de sandsynlige tilbudsgivere og SMV'er der falder fra, og danner en
+   kravtekst. En leverandør, hvor regnskabet ikke afgør sagen (fx kun
+   bruttofortjeneste under kravet), regnes aldrig som opfyldt.
+5. **Bilag** — hele analysen som et dokument til print eller PDF.
 
 Forskellen på dette og Tilbudsgiver-radaren er populationen: radaren viser dem,
 der har vundet et EU-udbud før, mens markedsanalysen viser hele CVR-registret.
@@ -238,7 +250,7 @@ scripts/
 supabase/
   functions/   cvr-soeg, cvr-datafordeler, ted, ted-notice, regnskab-search,
                regnskab-doc, sanktionstjek, marked, marked-vindere, udbud-soeg,
-               ordregiver-soeg, bid-gonogo, bid-questions, bid-answer-draft,
+               ordregiver-soeg, behov-marked, bid-gonogo, bid-questions, bid-answer-draft,
                cvr + _shared/
   migrations/  Cache-tabeller, markedsindeks og sanktionsliste
 ```
@@ -312,7 +324,7 @@ hvor der ingen begrænsning er.
 
 #### Størrelse: hvorfor forretningssteder og ikke omsætning
 
-Kandidatlisten rangerer efter størrelse, fordi et vilkårligt udsnit af et
+Markedsdelen af leverandørlisten rangerer efter størrelse, fordi et vilkårligt udsnit af et
 marked er ubrugeligt: i rengøringsbranchen (`812100`) er 7.388 virksomheder
 aktive, 64 % af dem er enkeltmandsvirksomheder eller PMV'er, og kun 293 —
 **4,0 %** — er A/S eller har mere end ét forretningssted. Et udsnit på 200

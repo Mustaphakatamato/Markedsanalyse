@@ -133,12 +133,29 @@ Deno.serve(async (req) => {
 
   const top = Math.min(Math.max(Number(krop.top) || 25, 1), 100);
 
+  // Periode i hele år tilbage fra i dag. Uden den tæller optællingen de 1.000
+  // nyeste tildelinger, uanset hvor langt tilbage de rækker — i et lille felt
+  // kan det være femten år, i et stort kun ét. "Vundet de seneste 5 år" er et
+  // spørgsmål, man kan stille; "vundet blandt de 1.000 nyeste" er ikke.
+  // Datoen indgår i forespørgslen og dermed i cache-nøglen: cachen skifter
+  // naturligt periode ved døgnskifte, samtidig med at TTL'en udløber.
+  const aar = krop.aar == null ? null : Math.min(Math.max(Math.round(Number(krop.aar)) || 0, 1), 15);
+  let fraFilter = "";
+  let periodeFra: string | null = null;
+  if (aar) {
+    const fra = new Date();
+    fra.setUTCFullYear(fra.getUTCFullYear() - aar);
+    periodeFra = fra.toISOString().slice(0, 10);
+    fraFilter = ` AND publication-date>=${periodeFra.replaceAll("-", "")}`;
+  }
+
   const cpvLed = koder.map((k) => `classification-cpv=${k}`).join(" OR ");
   const query =
     `(${cpvLed}) AND notice-type IN (can-standard can-social) AND buyer-country=DNK` +
+    fraFilter +
     " SORT BY publication-date DESC";
 
-  const cacheKey = await sha256Hex(`${query}|top=${top}`);
+  const cacheKey = await sha256Hex(`${query}|top=${top}|v=2`);
   const cached = await readCache<unknown>(
     "ted_vindere_cache",
     "query_hash",
@@ -176,7 +193,19 @@ Deno.serve(async (req) => {
     sumEnkeltkontrakterDkk: number;
     senesteDato: string | null;
     senesteNotice: { publikationsnummer: string | null; ordregiver: string; url: string | null } | null;
+    tildelinger: Tildeling[];
   };
+
+  // De enkelte sejre bag tallet. Uden dem er "12 vundne" et tal, man må tro
+  // på — med dem kan ordregiveren se, hvem der købte hvad og hvornår.
+  type Tildeling = {
+    dato: string | null;
+    ordregiver: string;
+    beloebDkk: number | null;
+    ramme: boolean;
+    url: string | null;
+  };
+  const MAKS_TILDELINGER = 30;
 
   const perNavn = new Map<string, Post>();
   let aeldsteDato: string | null = null;
@@ -223,7 +252,8 @@ Deno.serve(async (req) => {
           ordregivere: new Set<string>(),
           sumEnkeltkontrakterDkk: 0,
           senesteDato: null,
-          senesteNotice: null
+          senesteNotice: null,
+          tildelinger: []
         };
         perNavn.set(noegle, post);
       }
@@ -233,6 +263,17 @@ Deno.serve(async (req) => {
       if (ordregiver) post.ordregivere.add(normaliser(ordregiver));
       if (!erRamme && beloeb != null && valuta === "DKK") {
         post.sumEnkeltkontrakterDkk += beloeb;
+      }
+      if (post.tildelinger.length < MAKS_TILDELINGER) {
+        post.tildelinger.push({
+          dato,
+          ordregiver,
+          beloebDkk: !erRamme && beloeb != null && valuta === "DKK" ? beloeb : null,
+          ramme: erRamme,
+          url: publikationsnummer
+            ? `https://ted.europa.eu/en/notice/-/detail/${publikationsnummer}`
+            : null
+        });
       }
       // Notices er sorteret faldende, så den første vi ser er den nyeste.
       if (dato && (!post.senesteDato || dato > post.senesteDato)) {
@@ -260,7 +301,8 @@ Deno.serve(async (req) => {
       antalOrdregivere: p.ordregivere.size,
       sumEnkeltkontrakterDkk: p.sumEnkeltkontrakterDkk || null,
       senesteDato: p.senesteDato,
-      senesteNotice: p.senesteNotice
+      senesteNotice: p.senesteNotice,
+      tildelinger: p.tildelinger
     }))
     .sort(
       (a, b) =>
@@ -320,6 +362,10 @@ Deno.serve(async (req) => {
       afkortet: alle.length < noticesIalt,
       fraDato: aeldsteDato,
       tilDato: nyesteDato,
+      // Den ønskede periode, til forskel fra fraDato/tilDato, som er hvad
+      // data faktisk dækker. Er listen afkortet, ligger fraDato senere.
+      aar,
+      periodeFra,
       vindereIalt: perNavn.size
     },
     vindere

@@ -38,15 +38,47 @@ async function kald(krop) {
 // tærskelværdi. Den leverandør, der aldrig har vundet et EU-udbud, findes
 // ikke her — og markedets sammensætning, som "opdel eller forklar" hviler
 // på, kan ikke aflæses af en vinderliste. De to svarer på hver sit spørgsmål.
-export async function hentVindere(cpvKoder, { top = 25 } = {}) {
+//
+// aar afgrænser til tildelinger offentliggjort de seneste aar år. Uden den
+// tælles de 1.000 nyeste, uanset hvor langt de rækker tilbage.
+export async function hentVindere(cpvKoder, { top = 25, aar = null } = {}) {
   const koder = [...new Set((cpvKoder ?? []).map((k) => String(k).trim()).filter(Boolean))];
   if (!koder.length) return { kilde: null, vindere: [] };
 
-  const svar = await postToFunction("/marked-vindere", { cpvKoder: koder, top });
+  const svar = await postToFunction("/marked-vindere", { cpvKoder: koder, top, aar });
 
   if (!svar.ok) {
     const fejl = await svar.json().catch(() => null);
     throw new Error(fejl?.error || `Vinderopslag fejlede (HTTP ${svar.status})`);
+  }
+
+  return svar.json();
+}
+
+// Fra behovsbeskrivelse til forslag om marked: CPV-koder med begrundelse,
+// afgrænsning og opdeling. Se supabase/functions/behov-marked — koderne er
+// slået op i den officielle nomenklatur, før de kommer hertil. Svaret er et
+// forslag; intet anvendes uden ordregiverens bekræftelse.
+const IKKE_UDRULLET =
+  "AI-forslaget kan ikke nås — funktionen er måske ikke udrullet på serveren endnu. " +
+  "Vælg CPV-koderne manuelt nedenfor.";
+
+export async function foreslaaMarked(behov) {
+  // En funktion, der ikke er udrullet, svarer ikke på CORS-forespørgslen, og
+  // browseren melder det som en netværksfejl ("Failed to fetch") frem for et
+  // 404. Begge dele skal kunne skelnes fra en fejl i selve forslaget, for
+  // CPV-vælgeren virker stadig.
+  let svar;
+  try {
+    svar = await postToFunction("/behov-marked", { behov });
+  } catch {
+    throw new Error(IKKE_UDRULLET);
+  }
+
+  if (!svar.ok) {
+    const fejl = await svar.json().catch(() => null);
+    if (svar.status === 404) throw new Error(IKKE_UDRULLET);
+    throw new Error(fejl?.error || `Markedsforslaget fejlede (HTTP ${svar.status})`);
   }
 
   return svar.json();

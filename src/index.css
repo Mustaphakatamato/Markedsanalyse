@@ -3250,3 +3250,719 @@ html {
     text-decoration: none;
   }
 }
+
+/* ==========================================================================
+   Markedsdialog — trinbjælke, trin og bilag
+   ========================================================================== */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dialog-hoved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+}
+
+.dialog-hoved .console-head {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.dialog-hoved__knapper {
+  margin: 0;
+}
+
+/* Trinbjælken. Tallet i cirklen bliver til et flueben, når trinnets
+   kerneoutput findes — status bæres af ikon og tekst, ikke af farve alene. */
+.trinbjaelke ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.trin {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 620;
+  text-align: left;
+  cursor: pointer;
+}
+
+.trin:hover {
+  border-color: var(--line-2);
+  background: var(--surface-2);
+}
+
+.trin[aria-current="step"] {
+  border-color: var(--brand-line);
+  background: var(--brand-soft);
+  color: var(--ink);
+}
+
+.trin__nr {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ink-3);
+}
+
+.trin--igang .trin__nr {
+  border-color: var(--brand-line);
+  color: var(--brand);
+}
+
+.trin--klar .trin__nr {
+  border-color: var(--ok-bd);
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+
+.trin[aria-current="step"] .trin__nr {
+  border-color: var(--brand-solid);
+  background: var(--brand-solid);
+  color: #ffffff;
+}
+
+.trin__titel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trin-fod {
+  justify-content: flex-end;
+}
+
+/* Trin 1 */
+.behov-grupper {
+  margin-bottom: var(--s5);
+}
+
+.behov-fod {
+  margin-top: var(--s5);
+}
+
+.behov-fod__skub {
+  flex: 1 1 auto;
+}
+
+.field__hjaelp {
+  margin: 6px 0 0;
+}
+
+.field__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  font-weight: 620;
+  color: var(--ink);
+}
+
+.soeg-linje {
+  display: flex;
+  gap: var(--s2);
+}
+
+.soeg-linje .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vaelg-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.vaelg-liste button {
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vaelg-liste li:last-child button {
+  border-bottom: 0;
+}
+
+.vaelg-liste button:hover {
+  background: var(--surface-2);
+}
+
+.valgt-leverandoer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.ai-forslag__aendret {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--s4);
+  color: var(--brand);
+}
+
+.ai-koder {
+  list-style: none;
+  margin: 0 0 var(--s4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-koder li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+}
+
+.ai-koder li.is-valgt {
+  border-color: var(--brand-line);
+  background: var(--surface);
+}
+
+.ai-koder p {
+  margin: 0;
+}
+
+.ai-koder__titel {
+  font-weight: 620;
+  color: var(--ink);
+}
+
+.ai-koder__knap {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--brand-line);
+  background: var(--surface);
+  color: var(--brand);
+  cursor: pointer;
+}
+
+.ai-koder__knap[aria-pressed="true"] {
+  background: var(--brand-solid);
+  border-color: var(--brand-solid);
+  color: #ffffff;
+}
+
+.tag--knap {
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.tag--knap:hover:not(:disabled) {
+  border-color: var(--brand-line);
+}
+
+.tag--knap:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.afgraensning {
+  margin-top: var(--s4);
+}
+
+.link-knap {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Nøgletalsrækker i trin 2 og 4 */
+.dialog-noegletal {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s3);
+}
+
+.dialog-noegletal--to {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: var(--s4);
+}
+
+.dialog-noegletal .stat p:last-child {
+  margin: 4px 0 0;
+}
+
+.stat__af {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--ink-3);
+  letter-spacing: 0;
+}
+
+/* Trin 3 */
+.lev-styring {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s4);
+  margin-bottom: var(--s4);
+}
+
+.lev-styring__gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lev-styring__gruppe .eyebrow {
+  margin: 0;
+}
+
+.lev-styring__soeg {
+  max-width: 220px;
+  margin-left: auto;
+}
+
+.lev-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 var(--s3);
+  color: var(--ink-2);
+}
+
+.lev-note svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+.lev-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lev {
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+}
+
+.lev:hover {
+  background: var(--surface-2);
+}
+
+.lev.is-shortlistet {
+  border-color: var(--ok-bd);
+  background: var(--ok-bg);
+}
+
+.lev.is-shortlistet .kandidat__marker {
+  border-color: var(--ok-bd);
+  background: var(--ok-fg);
+  color: var(--surface);
+}
+
+.lev__raekke {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 2.4fr) minmax(0, 1.2fr) minmax(0, 1.3fr) 128px;
+  align-items: start;
+  gap: var(--s3);
+  padding: var(--s3);
+}
+
+/* Fast bredde, så "SMV" og "Stor virksomhed" ikke giver hver række sin
+   egen kolonneinddeling. */
+.lev__smv {
+  justify-self: end;
+}
+
+.lev__titel {
+  margin: 0;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.lev__navn p {
+  margin: 2px 0 0;
+}
+
+.lev__maerker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.lev__maerker .pill {
+  padding: 2px 8px;
+  font-size: 0.6875rem;
+}
+
+.lev__sejre-knap {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  justify-content: start;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lev__sejre-knap[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.lev__stort {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.lev-tal {
+  display: flex;
+  flex-direction: column;
+}
+
+.lev-tal > .num {
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.lev__detalje {
+  padding: 0 var(--s3) var(--s3) calc(26px + var(--s3) * 2);
+}
+
+.lev-skillelinje {
+  margin: var(--s4) var(--s3) var(--s2);
+  padding-top: var(--s3);
+  border-top: 1px dashed var(--line-2);
+}
+
+.pill--estimat {
+  border-style: dashed;
+}
+
+/* Trin 4 */
+.krav-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.krav {
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+
+.krav__til {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-weight: 650;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.krav__til input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand-solid);
+}
+
+.krav__styring {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.krav__styring p {
+  margin: 0;
+}
+
+.krav__vaerdi {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+.krav__beloeb {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.krav__skala {
+  position: relative;
+  padding-bottom: 18px;
+}
+
+.krav__styring input[type="range"] {
+  width: 100%;
+  accent-color: var(--brand-solid);
+}
+
+/* Lovens loft som en fast markering under skalaen. Placeringen regnes i
+   komponenten, fordi den afhænger af værdi og varighed. */
+.krav__loft {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  padding-top: 2px;
+  border-top: 2px solid var(--alert-fg);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--alert-fg);
+  white-space: nowrap;
+}
+
+.krav__advarsel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--alert-fg);
+}
+
+.krav-gruppe {
+  border-top: 1px solid var(--line);
+  padding: var(--s3) 0;
+}
+
+.krav-gruppe summary {
+  font-weight: 650;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.krav-gruppe__liste {
+  list-style: none;
+  margin: var(--s2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.krav-gruppe__liste li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr) auto;
+  gap: var(--s3);
+  font-size: 0.8125rem;
+}
+
+.krav-gruppe__grund {
+  color: var(--alert-fg);
+  font-weight: 620;
+}
+
+.kravtekst {
+  margin: 0;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+/* Trin 5 */
+.bilag-handlinger {
+  align-items: center;
+}
+
+.bilag h2 {
+  margin: 0 0 4px;
+}
+
+.bilag h3 {
+  margin: var(--s6) 0 var(--s3);
+}
+
+.bilag__hoved {
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+.bilag-felter {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.bilag-felt {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: var(--s3);
+  font-size: 0.8125rem;
+}
+
+.bilag-felt dt {
+  color: var(--ink-3);
+  font-weight: 620;
+}
+
+.bilag-felt dd {
+  margin: 0;
+  color: var(--ink);
+}
+
+.bilag-liste {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.udbud-kort__behov {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 1040px) {
+  .dialog-noegletal {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lev__raekke {
+    grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .lev__navn {
+    grid-column: 2 / -1;
+  }
+
+  .lev__sejre {
+    grid-column: 2;
+  }
+
+  .lev__smv {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 768px) {
+  .trinbjaelke ol {
+    display: flex;
+    overflow-x: auto;
+  }
+
+  .trinbjaelke li {
+    flex: none;
+  }
+
+  .lev-styring__soeg {
+    max-width: none;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .bilag-felt,
+  .krav-gruppe__liste li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+@media (max-width: 640px) {
+  .dialog-noegletal,
+  .dialog-noegletal--to {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media print {
+  /* Bilaget er ét langt kort; den generelle "bryd ikke kort over sider"
+     ville skubbe det hele til næste side eller klippe det. */
+  .bilag {
+    border: 0 !important;
+    padding: 0;
+    break-inside: auto !important;
+  }
+
+  .bilag h3 {
+    break-after: avoid;
+  }
+
+  .bilag-tabel {
+    font-size: 0.6875rem;
+  }
+
+  .kravtekst {
+    border: 1px solid #999999;
+    background: #ffffff;
+  }
+}
