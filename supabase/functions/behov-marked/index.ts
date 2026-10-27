@@ -124,7 +124,19 @@ Deno.serve(async (req) => {
       { role: "user", content: beskrivelse }
     ],
     responseFormat: { name: "markedsforslag", schema: SCHEMA },
-    maxTokens: 1500
+    // GPT-OSS er en ræsonnerende model, og tænke-tokenne tæller MED i
+    // max_completion_tokens. Med 1500 og fuld ræsonnering brugte modellen
+    // budgettet op, før JSON'en var skrevet færdig, og Groq svarede 400:
+    // "max completion tokens reached before generating a valid document"
+    // (genskabt 2026-10-27 med en fyldig behovsbeskrivelse — en kort slap
+    // igennem, hvilket er grunden til at det ikke blev fanget med det samme).
+    //
+    // Derfor begge dele: lav ræsonnering, fordi opgaven er at slå koder op og
+    // ikke at tænke langt, og et loft med luft til at svaret faktisk kan blive
+    // færdigt. Selve dokumentet er bundet af systemprompten (2-5 koder, 3-6
+    // søgeord, 1-4 punkter pr. liste) og fylder et par hundrede tokens.
+    reasoningEffort: "low",
+    maxTokens: 4096
   });
 
   if (!resultat.ok) {
