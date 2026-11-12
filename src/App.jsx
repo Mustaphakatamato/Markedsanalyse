@@ -1,18 +1,29 @@
 import { useEffect, useState } from "react";
 import Rail from "./components/layout/Rail";
 import Topbar from "./components/layout/Topbar";
+import BehovsopgoerelsePage from "./pages/BehovsopgoerelsePage";
 import CompanyLookupPage from "./pages/CompanyLookupPage";
 import KontraktAgentPage from "./pages/KontraktAgentPage";
+import MarkedsanalysePage from "./pages/MarkedsanalysePage";
 import TenderPage from "./pages/TenderPage";
 import TilbudsgiverPage from "./pages/TilbudsgiverPage";
 import UdbudssoegningPage from "./pages/UdbudssoegningPage";
 
-// Appen er skåret ned til ét flow: markedsanalysen. De tre andre sider ligger
-// urørt i src/pages og tændes igen ved at føje deres id til listen herunder —
-// det er det eneste sted, der skal rettes. Rækkefølgen styrer også skinnen,
-// og det første id er den side, man lander på.
-const AKTIVE_FLOWS = ["tenders", "kontraktagent"];
-const STANDARD_VIEW = AKTIVE_FLOWS[0];
+// Hvilke flows der er tændt. De slukkede sider (company, bidder,
+// udbudssoegning) ligger urørt i src/pages og tændes igen ved at føje deres id
+// til listen herunder — det er det eneste sted, der skal rettes.
+//
+// Listen styrer kun HVILKE flows der er synlige, ikke deres rækkefølge:
+// skinnen render NAV_ITEMS i Rail.jsx og filtrerer dem mod denne liste, så
+// rækkefølgen skal ændres DÉR. (Den oprindelige kommentar her påstod, at
+// rækkefølgen lå i denne liste — det passer ikke.)
+const AKTIVE_FLOWS = ["behov", "marked", "tenders", "kontraktagent"];
+
+// Landingssiden er IKKE længere AKTIVE_FLOWS[0]. Behovsopgørelsen står først i
+// skinnen, fordi den står først i processen, men den er stadig et stillads —
+// og at lande på en tom side ville få appen til at se i stykker ud. De to ting
+// skal derfor kunne vælges hver for sig.
+const STANDARD_VIEW = "tenders";
 
 // Hvilket faneblad man stod på er en del af "alt bliver slettet"-oplevelsen
 // ved et refresh — uden dette hopper en refresh altid tilbage til
@@ -95,6 +106,8 @@ export default function App() {
         {activeView === "bidder" && <TilbudsgiverPage onGoToCompany={goToCompany} />}
         {activeView === "udbudssoegning" && <UdbudssoegningPage />}
         {activeView === "kontraktagent" && <KontraktAgentPage />}
+        {activeView === "behov" && <BehovsopgoerelsePage />}
+        {activeView === "marked" && <MarkedsanalysePage />}
       </div>
     </div>
   );

@@ -17,6 +17,11 @@ import Icon from "../ui/Icon";
 // i sync.
 
 const NAV_ITEMS = [
+  { id: "behov", label: "Behovsopgørelse", icon: "inbox" },
+  // "Markedsanalyse" og "Udbud & markedsanalyse" ligner hinanden, men er to
+  // forskellige ting: denne er leverandør- og markedstallene, den anden er
+  // markedsDIALOGEN i fem trin. Se noten i MarkedsanalysePage.jsx.
+  { id: "marked", label: "Markedsanalyse", icon: "trend" },
   { id: "company", label: "Virksomhedsopslag", icon: "building" },
   { id: "tenders", label: "Udbud & markedsanalyse", icon: "doc" },
   { id: "bidder", label: "Tilbudsgiver-radar", icon: "radar" },
