@@ -4022,10 +4022,22 @@ html {
   font-weight: 550;
 }
 
+/* FARVEN ER IKKE DEKORATIV — uden den er teksten usynlig. .console
+   overskriver --ink til hvidt, men body sætter color: var(--ink) UDEN FOR
+   konsollen, så børn arver den beregnede MØRKE farve. Derfor har konsollen
+   eksplicitte regler for .lede og .muted; .small står ikke på den liste, og
+   agentens kommentar blev dermed mørk på mørk. Farven sættes på wrapperen, så
+   alt indhold arver den, frem for at skulle huskes på hvert element. */
 .samtale--agent {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
+  color: var(--ink-2);
+}
+
+/* Kandidatkortets titel skal stå frem fra den dæmpede brødtekst omkring. */
+.samtale--agent .kandidat-titel {
+  color: var(--ink);
 }
 
 /* Kandidatkortene er knapper, fordi et klik skifter hele sidens indhold.

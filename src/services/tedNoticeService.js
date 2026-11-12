@@ -89,7 +89,8 @@ function parseTopLevel(doc) {
   return {
     title: text(firstChildByLocalName(proj, "Name")),
     description: text(firstChildByLocalName(proj, "Description")),
-    cpvCodes: parseCpvCodes(proj)
+    cpvCodes: parseCpvCodes(proj),
+    periode: parsePlannedPeriod(proj)
   };
 }
 
@@ -104,7 +105,8 @@ function parseLots(doc) {
         id,
         title: text(firstChildByLocalName(proj, "Name")),
         description: text(firstChildByLocalName(proj, "Description")),
-        cpvCodes: parseCpvCodes(proj)
+        cpvCodes: parseCpvCodes(proj),
+        periode: parsePlannedPeriod(proj)
       };
     })
     .filter(Boolean);
@@ -271,6 +273,134 @@ function matchTenderingPartyIds(doc, matchedOrgIds) {
 
 // TEN-id → tildelingsdato, fra de FULDE efac:SettledContract-blokke (ikke de
 // bare ID-referencer der også ligger inde i hver efac:LotResult).
+// Kontraktens LØBETID og udløb. Står i cac:PlannedPeriod, enten som en
+// varighed med enhed (<cbc:DurationMeasure unitCode="YEAR">4</…>) eller som
+// konkrete start-/slutdatoer — og ofte kun det ene. Begge dele tages med og
+// holdes adskilt: en varighed på "4 år" siger intet om HVORNÅR den løber fra,
+// og at regne en slutdato ud af publiceringsdatoen ville være et gæt
+// præsenteret som en dato.
+//
+// Søge-API'et har felterne duration-period-value-lot/-unit-lot, men de er
+// upålidelige: verificeret på 221286-2024, hvor value kom tilbage som "4"
+// mens unit var TOM. Enheden står kun som attribut i XML'en, så den læses her.
+const VARIGHEDSENHED = {
+  YEAR: { en: "år", flere: "år" },
+  MONTH: { en: "måned", flere: "måneder" },
+  WEEK: { en: "uge", flere: "uger" },
+  DAY: { en: "dag", flere: "dage" }
+};
+
+function parsePlannedPeriod(parent) {
+  const periode = descendantByLocalName(parent, "PlannedPeriod");
+  if (!periode) return null;
+
+  const maal = firstChildByLocalName(periode, "DurationMeasure");
+  const antal = maal ? Number(text(maal)) : null;
+  const enhedKode = maal?.getAttribute("unitCode") || null;
+  const enhed = enhedKode ? VARIGHEDSENHED[enhedKode] : null;
+
+  const varighed =
+    Number.isFinite(antal) && antal > 0
+      ? {
+          antal,
+          enhedKode,
+          // Ukendt enhedskode vises råt frem for at blive gættet — samme
+          // disciplin som de øvrige TED-koder i appen.
+          tekst: enhed ? `${antal} ${antal === 1 ? enhed.en : enhed.flere}` : `${antal} ${enhedKode ?? ""}`.trim()
+        }
+      : null;
+
+  // Datoerne kommer med tidszonemarkør ("2029-08-25+02:00"), som new Date()
+  // ikke kan læse pålideligt — kun datodelen beholdes.
+  const dag = (el) => {
+    const raa = text(el);
+    const m = raa?.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : null;
+  };
+
+  const start = dag(firstChildByLocalName(periode, "StartDate"));
+  const slut = dag(firstChildByLocalName(periode, "EndDate"));
+
+  if (!varighed && !start && !slut) return null;
+  return { varighed, start, slut };
+}
+
+// ANTAL BUD. Ligger i efac:ReceivedSubmissionsStatistics som et SÆT af koder,
+// og hvilke koder der er udfyldt varierer fra bekendtgørelse til
+// bekendtgørelse. Verificeret: 292961-2024 har part-req=8 og tenders=5,
+// 546488-2026 har tenders=8, mens 221286-2024 KUN har t-med=2 (bud fra
+// mellemstore virksomheder) og altså slet ingen total.
+//
+// Derfor returneres alle koder råt, og totalen tages UDELUKKENDE fra koden
+// "tenders". Summen af størrelsesopdelingen ville være et forkert tal
+// præsenteret som en optælling — opdelingen kan være delvis, og de enkelte
+// kategorier overlapper (t-sme dækker t-micro/t-small/t-med).
+const STATISTIK_ETIKET = {
+  tenders: "Bud i alt",
+  "part-req": "Ansøgninger om prækvalifikation",
+  "t-sme": "Bud fra SMV'er",
+  "t-micro": "Bud fra mikrovirksomheder",
+  "t-small": "Bud fra små virksomheder",
+  "t-med": "Bud fra mellemstore virksomheder",
+  "t-eea": "Bud fra EØS-lande",
+  "t-no-eea": "Bud fra lande uden for EØS",
+  "t-oth-eea": "Bud fra andre EØS-lande",
+  "t-verif-inad": "Bud afvist som ukonditionsmæssige"
+};
+
+export function statistikEtiket(kode) {
+  return STATISTIK_ETIKET[kode] || kode;
+}
+
+// Løbetiden står næsten ALDRIG i roden — den hører til delkontrakten.
+// Verificeret på tre bekendtgørelser: i 221286-2024 og 273436-2026 ligger
+// PlannedPeriod under ProcurementProjectLot > ProcurementProject, og roden
+// har ingen. 292961-2024 har den slet ikke.
+//
+// Derfor: brug rodens, hvis den findes, ellers delkontrakternes. Er de ens
+// (det normale — alle delaftaler løber lige længe), vises én værdi. Er de
+// forskellige, returneres null med `varierer: true`, så UI'et kan sige det
+// frem for at vælge én delkontrakts løbetid og udgive den for kontraktens.
+function sammenfatPeriode(topPeriode, lots) {
+  if (topPeriode) return { ...topPeriode, varierer: false };
+
+  const fundne = lots.map((l) => l.periode).filter(Boolean);
+  if (!fundne.length) return null;
+
+  const noegle = (p) => `${p.varighed?.tekst ?? ""}|${p.start ?? ""}|${p.slut ?? ""}`;
+  const unikke = [...new Set(fundne.map(noegle))];
+
+  return unikke.length === 1 ? { ...fundne[0], varierer: false } : { varighed: null, start: null, slut: null, varierer: true };
+}
+
+function parseSubmissionStats(doc) {
+  const perLot = new Map();
+  let tendersIalt = null;
+
+  for (const lotResult of allByLocalName(doc, "LotResult")) {
+    const lotId = text(firstChildByLocalName(firstChildByLocalName(lotResult, "TenderLot"), "ID"));
+    const tal = [];
+
+    for (const stat of allByLocalName(lotResult, "ReceivedSubmissionsStatistics")) {
+      const kode = text(firstChildByLocalName(stat, "StatisticsCode"));
+      const antal = Number(text(firstChildByLocalName(stat, "StatisticsNumeric")));
+      if (!kode || !Number.isFinite(antal)) continue;
+      tal.push({ kode, antal });
+      if (kode === "tenders") {
+        // Flere delkontrakter kan hver have sin optælling. Den HØJESTE vises
+        // som notice'ens tal frem for summen: samme tilbudsgiver byder typisk
+        // på flere delkontrakter, så en sum ville tælle den samme byder flere
+        // gange og overdrive konkurrencen.
+        tendersIalt = tendersIalt == null ? antal : Math.max(tendersIalt, antal);
+      }
+    }
+
+    if (tal.length) perLot.set(lotId || `uden-lot-${perLot.size}`, tal);
+  }
+
+  return { perLot: [...perLot.entries()].map(([lotId, tal]) => ({ lotId, tal })), tendersIalt };
+}
+
 function parseAwardDates(doc) {
   const map = new Map();
   for (const contract of allByLocalName(doc, "SettledContract")) {
@@ -330,9 +460,11 @@ async function fetchNoticeXml(publicationNumber) {
  * @returns {Promise<{
  *   title: string|null,
  *   description: string|null,
- *   lots: Array<{ id: string, title: string|null, description: string|null, cpvCodes: string[] }>,
+ *   lots: Array<{ id: string, title: string|null, description: string|null, cpvCodes: string[], periode: { varighed: { antal: number, enhedKode: string|null, tekst: string }|null, start: string|null, slut: string|null }|null }>,
  *   companyAwards: Array<{ tenderId: string|null, lotId: string|null, lotTitle: string|null, value: number|null, currency: string|null, description: string|null, awardDate: string|null }>,
- *   companyAwardsTotal: number
+ *   companyAwardsTotal: number,
+ *   periode: { varighed: { antal: number, enhedKode: string|null, tekst: string }|null, start: string|null, slut: string|null, varierer: boolean }|null,
+ *   bud: { perLot: Array<{ lotId: string, tal: Array<{ kode: string, antal: number }> }>, tendersIalt: number|null }
  * } | null>}
  */
 export async function getNoticeDetail(notice, companyName) {
@@ -366,7 +498,18 @@ export async function getNoticeDetail(notice, companyName) {
 
   const companyAwardsTotal = companyAwards.reduce((sum, a) => sum + (a.value || 0), 0);
 
-  return { title: top.title, description: top.description, lots, companyAwards, companyAwardsTotal };
+  return {
+    title: top.title,
+    description: top.description,
+    lots,
+    companyAwards,
+    companyAwardsTotal,
+    // Løbetid/udløb og antal bud: begge findes KUN i XML'en. Søge-API'et har
+    // ingen optælling af bud overhovedet, og dets varighedsfelter mangler
+    // enheden (se parsePlannedPeriod).
+    periode: sammenfatPeriode(top.periode, lots),
+    bud: parseSubmissionStats(doc)
+  };
 }
 
 /**
@@ -388,7 +531,7 @@ export async function getNoticeDetail(notice, companyName) {
  *   description: string|null,
  *   buyerName: string|null,
  *   cpvCodes: string[],
- *   lots: Array<{ id: string, title: string|null, description: string|null, cpvCodes: string[] }>,
+ *   lots: Array<{ id: string, title: string|null, description: string|null, cpvCodes: string[], periode: { varighed: { antal: number, enhedKode: string|null, tekst: string }|null, start: string|null, slut: string|null }|null }>,
  *   criteria: Array<{ typeCode: string|null, category: string, description: string }>,
  *   awardCriteria: Array<{ typeCode: string|null, category: string, description: string, weight: { value: number, unit: string|null, code: string|null }|null }>,
  *   documentLinks: Array<{ label: string, documentType: string|null, url: string }>

@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { spoergAgent, hentKontrakt, artEtiket } from "../services/kontraktAgentService";
+import { statistikEtiket } from "../services/tedNoticeService";
 import { formatDkkMio, formatPercent, formatAmount, formatDanishDate } from "../lib/format";
 import SourceBadge from "../components/ui/SourceBadge";
 import MetricRow from "../components/ui/Metric";
@@ -140,6 +141,20 @@ function Kontraktkort({ kandidat, detalje, krav }) {
   // total-value er rammens fælles loft og siger intet om den enkelte vinder,
   // når der er flere.
   const egneTildelinger = detalje?.companyAwards ?? [];
+  const periode = detalje?.periode ?? null;
+  const bud = detalje?.bud ?? null;
+
+  // Alle andre statistik-koder end "tenders", uden dubletter på tværs af
+  // delkontrakter — de samme koder går igen pr. lot med samme tal.
+  const andreBudtal = [];
+  const setKoder = new Set();
+  for (const lot of bud?.perLot ?? []) {
+    for (const t of lot.tal) {
+      if (t.kode === "tenders" || setKoder.has(t.kode)) continue;
+      setKoder.add(t.kode);
+      andreBudtal.push(t);
+    }
+  }
 
   return (
     <section className="card">
@@ -168,7 +183,43 @@ function Kontraktkort({ kandidat, detalje, krav }) {
           label="Samlet værdi"
           value={kandidat.vaerdi != null ? formatAmount(kandidat.vaerdi, kandidat.valuta) : "–"}
         />
+
+        {/* Løbetid og udløb holdes adskilt, fordi kilden holder dem adskilt:
+            en varighed på "4 år" siger intet om hvornår den løber fra, og de
+            fleste bekendtgørelser oplyser kun det ene. At regne en slutdato ud
+            af publiceringsdatoen ville være et gæt sat op som en dato. */}
+        {periode?.varierer ? (
+          <MetricRow label="Løbetid" value="Varierer pr. delkontrakt" />
+        ) : (
+          <>
+            {periode?.varighed && <MetricRow label="Løbetid" value={periode.varighed.tekst} />}
+            {periode?.start && (
+              <MetricRow label="Træder i kraft" value={formatDanishDate(periode.start)} />
+            )}
+            {periode?.slut && <MetricRow label="Udløber" value={formatDanishDate(periode.slut)} />}
+            {!periode && <MetricRow label="Løbetid" value="Ikke oplyst" />}
+          </>
+        )}
+
+        {/* Kun koden "tenders" må vises som totalen. Summen af
+            størrelsesopdelingen ville være forkert: kategorierne overlapper,
+            og opdelingen kan være delvis. */}
+        {bud?.tendersIalt != null ? (
+          <MetricRow label="Antal bud" value={bud.tendersIalt} />
+        ) : (
+          <MetricRow label="Antal bud" value="Ikke oplyst" />
+        )}
       </div>
+
+      {/* Står totalen ikke i bekendtgørelsen, men en opdeling gør, vises
+          opdelingen for sig — den er stadig et svar, bare ikke på "hvor mange
+          bød". */}
+      {bud?.tendersIalt == null && andreBudtal.length > 0 && (
+        <p className="small muted">
+          Bekendtgørelsen oplyser ikke det samlede antal bud, men:{" "}
+          {andreBudtal.map((t) => `${statistikEtiket(t.kode).toLowerCase()} ${t.antal}`).join(", ")}.
+        </p>
+      )}
 
       {kandidat.ordregiverCvr?.length > 1 && (
         <p className="small muted">
@@ -219,6 +270,9 @@ function Kontraktkort({ kandidat, detalje, krav }) {
             {krav.lots.map((lot) => (
               <div key={lot.id} className="subcard">
                 <strong>{lot.title || lot.id}</strong>
+                {lot.periode?.varighed && (
+                  <p className="small muted">Løbetid: {lot.periode.varighed.tekst}</p>
+                )}
                 {lot.description && <p className="small muted">{lot.description}</p>}
                 {lot.cpvCodes?.length > 0 && (
                   <div className="tag-row">
