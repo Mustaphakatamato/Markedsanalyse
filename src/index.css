@@ -3997,3 +3997,74 @@ html {
     background: #ffffff;
   }
 }
+
+/* ==========================================================================
+   Kontraktopslag (agentsamtalen)
+   ========================================================================== */
+
+/* Samtalen er bevidst IKKE stiliseret som chatbobler med afsender-avatarer:
+   agenten er et opslagsværktøj, ikke en samtalepartner, og bobler ville
+   invitere til at læse svarene som meninger frem for som søgeresultater.
+   Brugerens linje markeres med en kant, agentens med indryk — nok til at se
+   hvem der siger hvad, uden at det bliver en messenger. */
+.samtale {
+  margin: 0;
+}
+
+.samtale + .samtale {
+  margin-top: var(--s5);
+}
+
+.samtale--bruger {
+  padding-left: var(--s4);
+  border-left: 2px solid var(--brand-solid);
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.samtale--agent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+/* Kandidatkortene er knapper, fordi et klik skifter hele sidens indhold.
+   Knap-reset først, så de ikke arver browserens knap-udseende. */
+button.udbud-kort {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+button.udbud-kort:hover,
+button.udbud-kort:focus-visible {
+  border-color: var(--brand-line);
+  background: var(--surface-2);
+  outline: none;
+}
+
+/* Det valgte kort skal kunne ses UDEN farve alene — kanten skifter tykkelse
+   og farve, så valget også er tydeligt i høj kontrast og for farveblinde. */
+button.udbud-kort--valgt {
+  border-color: var(--brand-solid);
+  box-shadow: inset 0 0 0 1px var(--brand-solid);
+}
+
+.kandidat-titel {
+  font-size: 0.9375rem;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+}
+
+/* Kandidatlisten har 4px mellemrum fra markedsanalysen, hvor posterne er
+   tætte tekstlinjer. Her er de kort med indhold og skal have luft. */
+.samtale--agent .kandidat-liste {
+  gap: var(--s3);
+}

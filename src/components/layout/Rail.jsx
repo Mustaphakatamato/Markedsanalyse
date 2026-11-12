@@ -24,7 +24,8 @@ const NAV_ITEMS = [
   // gemt filter på Udbudssøgning, fordi det var de samme bekendtgørelser fra
   // den samme tabel — kun med CPV-koderne valgt på forhånd og et tidsvindue.
   // Siden husker filtrene, så den vej ind koster stadig ingen valg.
-  { id: "udbudssoegning", label: "Udbudssøgning", icon: "search" }
+  { id: "udbudssoegning", label: "Udbudssøgning", icon: "search" },
+  { id: "kontraktagent", label: "Kontraktopslag", icon: "spark" }
 ];
 
 export default function Rail({ flows, activeView, onChangeView }) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Rail from "./components/layout/Rail";
 import Topbar from "./components/layout/Topbar";
 import CompanyLookupPage from "./pages/CompanyLookupPage";
+import KontraktAgentPage from "./pages/KontraktAgentPage";
 import TenderPage from "./pages/TenderPage";
 import TilbudsgiverPage from "./pages/TilbudsgiverPage";
 import UdbudssoegningPage from "./pages/UdbudssoegningPage";
@@ -10,7 +11,7 @@ import UdbudssoegningPage from "./pages/UdbudssoegningPage";
 // urørt i src/pages og tændes igen ved at føje deres id til listen herunder —
 // det er det eneste sted, der skal rettes. Rækkefølgen styrer også skinnen,
 // og det første id er den side, man lander på.
-const AKTIVE_FLOWS = ["tenders"];
+const AKTIVE_FLOWS = ["tenders", "kontraktagent"];
 const STANDARD_VIEW = AKTIVE_FLOWS[0];
 
 // Hvilket faneblad man stod på er en del af "alt bliver slettet"-oplevelsen
@@ -93,6 +94,7 @@ export default function App() {
         {activeView === "tenders" && <TenderPage onGoToCompany={goToCompany} />}
         {activeView === "bidder" && <TilbudsgiverPage onGoToCompany={goToCompany} />}
         {activeView === "udbudssoegning" && <UdbudssoegningPage />}
+        {activeView === "kontraktagent" && <KontraktAgentPage />}
       </div>
     </div>
   );
